@@ -26,6 +26,10 @@ conta ativa: trabalho → /home/voce/.claude-trabalho · voce@empresa.com
 $ claude           # o Claude Code abre na conta do trabalho
 ```
 
+<p align="center">
+  <img src="assets/demo.gif" alt="o claude abre na conta pessoal dentro de ~/work; depois de `ca here work`, abre na conta do trabalho ali, enquanto ~/side-project continua na pessoal, lado a lado" width="100%">
+</p>
+
 ## Por quê
 
 O Claude Code guarda um login por pasta de configuração. Se você tem uma assinatura pessoal *e* uma do trabalho, trocar significa `/logout`, `/login`, navegador, de novo e de novo, e seus plugins, skills e histórico de conversas não vêm junto.

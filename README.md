@@ -26,7 +26,9 @@ active account: work → /home/you/.claude-work · you@company.com
 $ claude           # Claude Code opens on the work account
 ```
 
-<!-- Demo GIF: render demo.tape with https://github.com/charmbracelet/vhs and drop it here -->
+<p align="center">
+  <img src="assets/demo.gif" alt="claude opens on the personal account inside ~/work; after `ca here work`, it opens on the work account there, while ~/side-project keeps the personal one, side by side" width="100%">
+</p>
 
 ## Why
 
