@@ -62,6 +62,8 @@ O nome do processo precisa continuar `claude`: o wrapper chama o link `claude` e
 
 `claude --continue` retoma a última conversa **do diretório atual** e falha se o diretório nunca teve sessão. Sem a flag, reabrir um terminal num diretório antigo começa vazio. O `claude-auto` olha se existe conversa em `<pasta da conta>/projects/<caminho do diretório>/*.jsonl` e escolhe entre `--continue` e começar limpo. Serve para ferramentas que sempre chamam o mesmo comando (IDEs, Maestri, presets de terminal).
 
+Se mesmo assim o `--continue` se recusar ao abrir (por exemplo, a última conversa virou sessão em segundo plano, talvez aberta por outra conta que compartilha o `projects/`), o `claude-auto` percebe a falha rápida e abre uma sessão nova na mesma conta, em vez de te deixar parado no erro. Para retomar uma conversa antiga, use `claude --resume`.
+
 ## A base e o compartilhamento
 
 A **base** (`~/.config/claude-accounts/base`) é só o nome da conta que guarda a configuração de verdade. `ca new` liga a conta nova a ela por padrão; `--clean` desliga isso e `--share OUTRA` liga a outra conta. `ca base OUTRA` troca a base de verdade: move os itens compartilhados para a nova e religa as demais.

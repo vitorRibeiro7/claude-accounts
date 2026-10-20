@@ -61,6 +61,8 @@ The process name must stay `claude`: the installer records the `claude` link, no
 
 `claude --continue` resumes the last conversation **of the current directory** and fails if that directory never had a session. Without the flag, reopening a terminal in an old directory starts empty. `claude-auto` checks whether `<account folder>/projects/<directory path>/*.jsonl` exists and picks `--continue` or a fresh start. It is meant for tools that always launch the same command.
 
+If `--continue` still refuses at startup (for example, the last conversation became a background session, possibly started from another account that shares `projects/`), `claude-auto` notices the quick failure and starts a new session on the same account instead of leaving you at an error. Pick an older conversation with `claude --resume`.
+
 ## The base and sharing
 
 The **base** (`~/.config/claude-accounts/base`) is just the name of the account that holds the real config. `ca new` links the new account to it by default; `--clean` turns that off; `--share OTHER` links to another account instead. `ca base OTHER` really moves the base: it moves the shared items to the new base and relinks everyone else.
