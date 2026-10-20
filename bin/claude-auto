@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# claude-auto — open Claude on the active account and CONTINUE this directory's conversation
-# if there is one; if the directory never had a session, start a new one.
+# claude-auto — open Claude on the account in effect here and CONTINUE this directory's last
+# conversation if there is one; if the directory never had a session, start a new one.
 #
 # Why: `claude --continue` is per directory and ABORTS when the directory never had a session;
 # without it, reopening a terminal in an old directory starts empty. No flag does both, so this
 # script decides. Handy for tools that always launch Claude with the same command (IDEs,
 # Maestri, terminal presets…).
+#
+# It never silently starts over: when the last conversation became a background session,
+# `--continue` refuses to open it, so claude-auto reattaches to it with `claude attach`.
 HERE="$(cd "$(dirname "$0")" && pwd)"
+CFG="${CLAUDE_ACCOUNTS_DIR:-$HOME/.config/claude-accounts}"
 if [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
   d="$("$HERE/claude-accounts" _dir)" || exit 1     # empty = default account (~/.claude)
   [ -n "$d" ] && export CLAUDE_CONFIG_DIR="$d"
@@ -14,18 +18,55 @@ fi
 
 # Claude stores conversations in <account dir>/projects/<path with / and . turned into ->
 project="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/${PWD//[\/.]/-}"
-
 [ -n "$(compgen -G "$project/*.jsonl" 2>/dev/null)" ] || exec "$HERE/claude" "$@"
 
-# `--continue` can refuse at startup, e.g. when the last conversation became a background
-# session ("moved to a background session … registered from another machine or container").
-# Then it exits with an error within a few seconds; start a new session instead of failing.
-# Not a fork: the background transcript can be huge, and copying it on every launch is costly.
+# shellcheck disable=SC1091
+[ -r "$CFG/config" ] && . "$CFG/config"
+REAL="${CLAUDE_REAL:-}"
+
+# `claude agents --json` of one account folder ($HOME/.claude = default account, run without
+# CLAUDE_CONFIG_DIR, as Claude expects).
+agents_json() {
+  [ -x "$REAL" ] || return 0
+  if [ "$1" = "$HOME/.claude" ]; then env -u CLAUDE_CONFIG_DIR "$REAL" agents --json --all --cwd "$PWD" 2>/dev/null
+  else CLAUDE_CONFIG_DIR="$1" "$REAL" agents --json --all --cwd "$PWD" 2>/dev/null; fi
+}
+
+# stdin: agents JSON · $1: session id → short id of the background session holding it
+background_id() {
+  tr -d '\n' | sed 's/}[[:space:]]*,[[:space:]]*{/}\
+{/g' | grep "\"sessionId\": *\"$1\"" | grep '"kind": *"background"' | sed -n 's/.*"id": *"\([^"]*\)".*/\1/p' | head -1
+}
+
+# the conversation `--continue` would pick: the most recently written transcript of this folder
+# shellcheck disable=SC2012  # transcript names are UUIDs
+last="$(ls -t "$project"/*.jsonl 2>/dev/null | head -1)"
+sid="$(basename "$last" .jsonl)"
+here_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
+id="$(agents_json "$here_dir" | background_id "$sid")"
+if [ -n "$id" ]; then
+  echo "claude-auto: the last conversation here runs in the background ($id); attaching to it." >&2
+  exec "$HERE/claude" attach "$id"
+fi
+
 start=$SECONDS
 "$HERE/claude" --continue "$@"
 code=$?
-if [ "$code" -ne 0 ] && [ $((SECONDS - start)) -lt "${CLAUDE_AUTO_GRACE:-5}" ]; then
-  echo "claude-auto: couldn't continue the last conversation here (it may be a background session). Starting a new one; use 'claude --resume' to pick an old one." >&2
-  exec "$HERE/claude" "$@"
-fi
+[ "$code" -ne 0 ] && [ $((SECONDS - start)) -lt "${CLAUDE_AUTO_GRACE:-5}" ] || exit "$code"
+
+# --continue refused at startup. Conversations are shared across accounts, so the background
+# session may belong to another account: reattach to it there, with the account that owns it.
+for dir in $("$HERE/claude-accounts" _dirs); do
+  [ "$dir" = "$here_dir" ] && continue
+  id="$(agents_json "$dir" | background_id "$sid")"
+  [ -n "$id" ] || continue
+  echo "claude-auto: the last conversation here is a background session of $dir ($id); attaching to it with that account." >&2
+  if [ "$dir" = "$HOME/.claude" ]; then exec env -u CLAUDE_CONFIG_DIR "$REAL" attach "$id"; fi
+  # shellcheck disable=SC2093  # exec on purpose: the loop ends at the first match
+  exec env CLAUDE_CONFIG_DIR="$dir" "$REAL" attach "$id"
+done
+
+echo "claude-auto: couldn't continue the last conversation here ($sid). Nothing new was started." >&2
+echo "  pick it with:  claude --resume $sid      ·  background sessions:  claude agents" >&2
 exit "$code"

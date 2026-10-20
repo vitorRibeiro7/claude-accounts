@@ -6,9 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
-- `claude-auto` no longer dead-ends when `claude --continue` refuses at startup (e.g. the last
-  conversation became a background session): it starts a new session on the same account and
-  points to `claude --resume`.
+- `claude-auto` reattaches when the directory's last conversation became a background session
+  (`claude attach <id>`, found with `claude agents --json`), instead of dead-ending on
+  `--continue`'s "moved to a background session" error. If the session belongs to another account
+  that shares `projects/`, it reattaches with that account. It never starts a new session on its
+  own: when nothing works, it says how to resume and stops.
 
 ### Changed
 - `ca here` keeps the pin out of git automatically: inside a repo it adds `.claude-account` to

@@ -594,6 +594,7 @@ case "${1:-}" in
     resolve; [ -n "$RES_NAME" ] && ! is_default "$RES_NAME" && dir_of "$RES_NAME"
     exit 0 ;;
   _names)             names ;;   # (internal) for shell completion
+  _dirs)              for n in $(names); do dir_of "$n"; done ;;   # (internal) for claude-auto
   -*)                 die "unknown option: $1 (see: ca help)" "opção desconhecida: $1 (veja: ca help)" ;;
   *)                  cmd_use "$1" ;;
 esac

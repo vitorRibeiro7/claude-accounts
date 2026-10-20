@@ -62,7 +62,7 @@ O nome do processo precisa continuar `claude`: o wrapper chama o link `claude` e
 
 `claude --continue` retoma a última conversa **do diretório atual** e falha se o diretório nunca teve sessão. Sem a flag, reabrir um terminal num diretório antigo começa vazio. O `claude-auto` olha se existe conversa em `<pasta da conta>/projects/<caminho do diretório>/*.jsonl` e escolhe entre `--continue` e começar limpo. Serve para ferramentas que sempre chamam o mesmo comando (IDEs, Maestri, presets de terminal).
 
-Se mesmo assim o `--continue` se recusar ao abrir (por exemplo, a última conversa virou sessão em segundo plano, talvez aberta por outra conta que compartilha o `projects/`), o `claude-auto` percebe a falha rápida e abre uma sessão nova na mesma conta, em vez de te deixar parado no erro. Para retomar uma conversa antiga, use `claude --resume`.
+Quando a última conversa virou **sessão em segundo plano**, o `--continue` se recusa a abri-la. O `claude-auto` consulta o `claude agents --json` antes e, se a conversa for uma sessão em segundo plano, reabre a mesma sessão com `claude attach <id>`. Se mesmo assim o `--continue` se recusar ao abrir, ele procura a sessão nas suas outras contas (as conversas são compartilhadas pelo `projects/`) e reconecta com a conta dona dela. Ele nunca começa uma sessão nova sozinho: se nada funcionar, mostra o `claude --resume <id>` para usar e para.
 
 ## A base e o compartilhamento
 

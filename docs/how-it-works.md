@@ -61,7 +61,7 @@ The process name must stay `claude`: the installer records the `claude` link, no
 
 `claude --continue` resumes the last conversation **of the current directory** and fails if that directory never had a session. Without the flag, reopening a terminal in an old directory starts empty. `claude-auto` checks whether `<account folder>/projects/<directory path>/*.jsonl` exists and picks `--continue` or a fresh start. It is meant for tools that always launch the same command.
 
-If `--continue` still refuses at startup (for example, the last conversation became a background session, possibly started from another account that shares `projects/`), `claude-auto` notices the quick failure and starts a new session on the same account instead of leaving you at an error. Pick an older conversation with `claude --resume`.
+When the last conversation became a **background session**, `--continue` refuses to open it. `claude-auto` checks `claude agents --json` first and, if that conversation is a background session, reopens the same session with `claude attach <id>`. If `--continue` still refuses at startup, it looks for the session in your other accounts (conversations are shared through `projects/`) and attaches with the account that owns it. It never starts a new session on its own: if nothing works, it prints the `claude --resume <id>` to use and stops.
 
 ## The base and sharing
 

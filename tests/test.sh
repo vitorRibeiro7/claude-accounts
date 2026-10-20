@@ -134,6 +134,8 @@ cat > "$fake/claude" <<'FAKE'
 #!/usr/bin/env bash
 # FAKE_FAIL_CONTINUE: refuse --continue like Claude Code does when the last conversation is a background session
 if [ "${1:-}" = --continue ] && [ -n "${FAKE_FAIL_CONTINUE:-}" ]; then echo "moved to a background session" >&2; exit 1; fi
+# `claude agents --json`: each fake account lists the background sessions in its fake-agents.json
+if [ "${1:-}" = agents ]; then cat "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/fake-agents.json" 2>/dev/null || echo '[]'; exit 0; fi
 echo "dir=${CLAUDE_CONFIG_DIR:-unset} args=$*"
 FAKE
 chmod +x "$fake/claude"
@@ -150,10 +152,24 @@ mkdir -p "$T/repo" "$HOME/.claude/projects/${T//[\/.]/-}-repo"
 expect "claude-auto starts fresh without history" "dir=unset args=" "$(cd "$T" && "$ROOT/bin/claude-auto")"
 touch "$HOME/.claude/projects/${T//[\/.]/-}-repo/s.jsonl"
 expect "claude-auto continues when there is history" "dir=unset args=--continue" "$(cd "$T/repo" && "$ROOT/bin/claude-auto")"
-expect "claude-auto starts a new session when --continue refuses at startup" "dir=unset args=-x" \
-  "$(cd "$T/repo" && FAKE_FAIL_CONTINUE=1 "$ROOT/bin/claude-auto" -x 2>/dev/null)"
-expect "...and says why" "1" "$(cd "$T/repo" && FAKE_FAIL_CONTINUE=1 "$ROOT/bin/claude-auto" 2>&1 >/dev/null | grep -c "couldn't continue")"
-refuses "a late failure is passed through, not retried" bash -c "cd '$T/repo' && FAKE_FAIL_CONTINUE=1 CLAUDE_AUTO_GRACE=0 '$ROOT/bin/claude-auto'"
+agents() { # account dir, short id, session id → that account lists one background session
+  printf '[\n  {\n    "id": "%s",\n    "cwd": "%s",\n    "kind": "background",\n    "sessionId": "%s",\n    "state": "done"\n  },\n  {\n    "pid": 1,\n    "kind": "interactive",\n    "sessionId": "other"\n  }\n]\n' "$2" "$T/repo" "$3" > "$1/fake-agents.json"
+}
+hist="$HOME/.claude/projects/${T//[\/.]/-}-repo"
+touch "$hist/old.jsonl"; sleep 1; touch "$hist/s.jsonl"            # s = the last conversation here
+agents "$HOME/.claude" bg12 s
+expect "claude-auto reattaches when the last conversation is a background session" "dir=unset args=attach bg12" \
+  "$(cd "$T/repo" && "$ROOT/bin/claude-auto" 2>/dev/null)"
+agents "$HOME/.claude" bg12 old
+expect "a background session of an OLDER conversation doesn't hijack --continue" "dir=unset args=--continue" \
+  "$(cd "$T/repo" && "$ROOT/bin/claude-auto" 2>/dev/null)"
+rm -f -- "$HOME/.claude/fake-agents.json"; agents "$HOME/.claude-gamma" bg34 s
+expect "when --continue refuses, it reattaches with the account that owns the session" "dir=$HOME/.claude-gamma args=attach bg34" \
+  "$(cd "$T/repo" && FAKE_FAIL_CONTINUE=1 "$ROOT/bin/claude-auto" 2>/dev/null)"
+rm -f -- "$HOME/.claude-gamma/fake-agents.json"
+refuses "...and never starts a new session on its own" bash -c "cd '$T/repo' && FAKE_FAIL_CONTINUE=1 '$ROOT/bin/claude-auto' 2>/dev/null | grep -q 'args=\$'"
+expect "...it tells you how to resume instead" "1" "$(cd "$T/repo" && FAKE_FAIL_CONTINUE=1 "$ROOT/bin/claude-auto" 2>&1 >/dev/null | grep -c 'claude --resume s')"
+refuses "a failure that isn't at startup is passed through" bash -c "cd '$T/repo' && FAKE_FAIL_CONTINUE=1 CLAUDE_AUTO_GRACE=0 '$ROOT/bin/claude-auto'"
 
 echo "language"
 expect "English by default" "(not logged in)" "$("$CA" list | grep ' gamma ' | sed 's/.*(not/(not/')"
