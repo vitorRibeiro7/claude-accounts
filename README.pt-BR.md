@@ -33,6 +33,8 @@ O Claude Code guarda um login por pasta de configuração. Se você tem uma assi
 O `claude-accounts` dá a cada conta a sua pasta e troca entre elas definindo o [`CLAUDE_CONFIG_DIR`](https://docs.claude.com/en/docs/claude-code/settings) por você:
 
 - ⚡ **Um comando para trocar**: `ca trabalho`, depois `claude`. Só isso.
+- 📁 **Conta por projeto**: `ca here trabalho` uma vez, e o `claude` abre na conta certa naquele repositório. Sessão pessoal e do trabalho lado a lado.
+- 👀 **Sempre saiba onde está**: conta e e-mail na status line do Claude Code e no prompt do terminal.
 - 🔐 **Logins separados**: cada conta guarda as próprias credenciais; nada é copiado nem compartilhado.
 - 🧩 **Configuração compartilhada**: instale um plugin ou skill uma vez e tenha em todas as contas (opcional, por conta).
 - 💬 **Retome conversas entre contas**: histórico compartilhado, então o `/resume` funciona em qualquer conta.
@@ -78,6 +80,27 @@ ca                 # 4. confira: mostra o e-mail do trabalho
 
 Volte quando quiser com `ca pessoal`. Guia completo: [docs/pt-BR/adicionar-conta.md](docs/pt-BR/adicionar-conta.md).
 
+## Conta por projeto
+
+Melhor ainda: não troque. Fixe a pasta uma vez e o `claude` escolhe a conta sozinho, ali e em todas as subpastas.
+
+```bash
+cd ~/trabalho/api && ca here trabalho   # grava .claude-account
+claude                                  # → conta do trabalho
+cd ~/projeto-pessoal && claude          # → sua conta global
+CLAUDE_ACCOUNT=pessoal claude           # exceção pontual, em qualquer pasta
+```
+
+Sessões em contas diferentes podem rodar **ao mesmo tempo** em terminais diferentes. Precedência e regras de segurança: [docs/pt-BR/contas-por-projeto.md](docs/pt-BR/contas-por-projeto.md).
+
+## A conta à vista o tempo todo
+
+```bash
+ca statusline --install   # barra do Claude Code: ● trabalho · voce@empresa.com
+```
+
+O `ca prompt` mostra a conta no prompt do terminal (exemplos para starship, powerlevel10k e PS1 em [docs/pt-BR/status-line.md](docs/pt-BR/status-line.md)). O instalador também configura o autocomplete de comandos e nomes de conta no zsh e no bash.
+
 > **Dica:** se o navegador já estiver logado em outra conta da Anthropic, o `/login` pode autorizar essa conta sem avisar. Use uma janela anônima.
 
 ## Comandos
@@ -86,16 +109,20 @@ Volte quando quiser com `ca pessoal`. Guia completo: [docs/pt-BR/adicionar-conta
 |---|---|
 | `ca` | mostra a conta ativa e o e-mail |
 | `ca list` | todas as contas; `*` marca a ativa |
-| `ca NOME` / `ca use NOME` | troca para NOME (recusa se houver sessão aberta) |
+| `ca NOME` / `ca use NOME` | troca a conta global para NOME (recusa se houver sessão aberta) |
+| `ca here [NOME \| --unset]` | fixa esta pasta e as subpastas numa conta |
 | `ca new NOME [--clean \| --share OUTRA]` | cria conta: ligada à base por padrão, isolada com `--clean` |
 | `ca base [NOME]` | mostra / troca a **base**: a conta que guarda plugins, skills e configurações compartilhados |
 | `ca share NOME OUTRA` | liga conversas/plugins/configurações de uma conta existente aos de OUTRA |
 | `ca remove NOME [--delete-dir]` | tira da lista (a pasta só é apagada com `--delete-dir`) |
 | `ca sessions` | sessões do Claude abertas e suas contas |
 | `ca stop` | encerra todas as sessões (pede confirmação) |
+| `ca statusline [--install]` | conta e e-mail na status line do Claude Code |
+| `ca prompt` | nome da conta para o prompt do terminal |
 | `ca lang [en\|pt-BR]` | idioma das mensagens |
 | `ca doctor` | confere a instalação |
-| `claude` | Claude Code na conta ativa |
+| `claude` | Claude Code na conta que vale aqui |
+| `CLAUDE_ACCOUNT=NOME claude` | um comando ou terminal em outra conta |
 | `claude-auto` | igual, mas continua a última conversa do diretório se houver; ótimo para IDEs e presets de terminal |
 
 ## Configuração compartilhada, logins separados
@@ -115,7 +142,7 @@ O que **nunca** é compartilhado: o login. Detalhes e armadilhas: [docs/pt-BR/co
 
 ```
 você digita:  claude
-   → o wrapper (primeiro no PATH) pergunta ao `ca` a pasta da conta ativa
+   → o wrapper (primeiro no PATH) pergunta ao `ca` qual conta vale aqui
    → exporta CLAUDE_CONFIG_DIR=~/.claude-trabalho
    → executa o claude de verdade
 ```
@@ -125,6 +152,7 @@ O estado é texto puro em `~/.config/claude-accounts/`. A conta padrão (`~/.cla
 ## Documentação
 
 - [Adicionar conta](docs/pt-BR/adicionar-conta.md) · [Remover conta](docs/pt-BR/remover-conta.md)
+- [Conta por projeto](docs/pt-BR/contas-por-projeto.md) · [Status line e prompt](docs/pt-BR/status-line.md)
 - [Configuração compartilhada entre contas](docs/pt-BR/configuracao-compartilhada.md)
 - [Separar o login da conta padrão](docs/pt-BR/conta-padrao-separada.md)
 - [Notas de macOS](docs/pt-BR/macos.md)

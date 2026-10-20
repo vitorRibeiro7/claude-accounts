@@ -153,6 +153,64 @@ expect "env var overrides" "en" "$(CLAUDE_ACCOUNTS_LANG=en "$CA" lang)"
 "$CA" lang en >/dev/null
 refuses "unknown language" "$CA" lang xx
 
+echo "per-folder accounts (.claude-account) and CLAUDE_ACCOUNT"
+"$CA" personal >/dev/null
+P="$T/projects/acme"; mkdir -p "$P/src/deep"
+(cd "$P" && "$CA" here gamma >/dev/null)
+expect "ca here writes the pin" "gamma" "$(cat "$P/.claude-account")"
+expect "the pin applies in that folder" "$HOME/.claude-gamma" "$(cd "$P" && "$CA" _dir)"
+expect "...and in its subfolders" "$HOME/.claude-gamma" "$(cd "$P/src/deep" && "$CA" _dir)"
+expect "outside it the global account applies" "" "$(cd "$T" && "$CA" _dir)"
+expect "ca shows where the account comes from" "1" "$(cd "$P/src" && "$CA" | grep -c 'from ~*.*acme/.claude-account')"
+expect "ca list marks the account used here" "1" "$(cd "$P" && "$CA" list | grep -c '^> gamma')"
+expect "the wrapper follows the pin" "dir=$HOME/.claude-gamma args=" "$(cd "$P/src" && "$ROOT/bin/claude")"
+expect "CLAUDE_ACCOUNT beats the pin" "$HOME/.claude-alpha" "$(cd "$P" && CLAUDE_ACCOUNT=alpha "$CA" _dir)"
+expect "CLAUDE_CONFIG_DIR beats everything" "dir=/x args=" "$(cd "$P" && CLAUDE_ACCOUNT=alpha CLAUDE_CONFIG_DIR=/x "$ROOT/bin/claude")"
+expect "prompt prints the account here" "gamma" "$(cd "$P" && "$CA" prompt)"
+refuses "ca here with a missing account" bash -c "cd '$P' && '$CA' here ghost"
+echo ghost > "$P/src/.claude-account"
+refuses "a pin to a missing account fails loudly" bash -c "cd '$P/src' && '$CA' _dir"
+refuses "...and the wrapper won't open Claude" bash -c "cd '$P/src' && '$ROOT/bin/claude'"
+expect "prompt stays silent on errors" "" "$(cd "$P/src" && "$CA" prompt 2>&1)"
+refuses "CLAUDE_ACCOUNT with a missing account fails" env CLAUDE_ACCOUNT=ghost "$CA" _dir
+(cd "$P/src" && "$CA" here --unset >/dev/null)
+expect "ca here --unset removes the pin" "" "$(yes_if [ -e "$P/src/.claude-account" ])"
+refuses "--unset without a pin" bash -c "cd '$P/src' && '$CA' here --unset"
+expect "switching globally inside a pinned folder says the pin wins" "1" "$(cd "$P" && "$CA" alpha | grep -c "'gamma' applies here")"
+"$CA" personal >/dev/null
+
+echo "status line"
+echo '{"oauthAccount":{"emailAddress":"g@example.com"}}' > "$HOME/.claude-gamma/.claude.json"
+sl="$(echo '{"model":{}}' | CLAUDE_CONFIG_DIR="$HOME/.claude-gamma" "$CA" statusline | sed 's/\x1b\[[0-9;]*m//g')"
+expect "statusline shows the session's account and email" "● gamma · g@example.com" "$sl"
+sl="$(echo '{}' | "$CA" statusline | sed 's/\x1b\[[0-9;]*m//g')"
+expect "statusline without CLAUDE_CONFIG_DIR is the default account" "● personal · me@example.com" "$sl"
+SG="$HOME/.claude-gamma/settings.json"; rm -f -- "$SG"
+(cd "$P" && "$CA" statusline --install >/dev/null)
+expect "--install writes the statusLine" "1" "$(grep -c '"command": ".*claude-accounts statusline"' "$SG")"
+refuses "--install twice is refused" bash -c "cd '$P' && '$CA' statusline --install"
+echo '{}' > "$SG"; (cd "$P" && "$CA" statusline --install >/dev/null)
+expect "--install on an empty object" "1" "$(grep -c statusLine "$SG")"
+echo '{}' > "$HOME/.claude-alpha/settings.json"
+rm -f -- "$SG"; ln -s "$HOME/.claude-alpha/settings.json" "$SG"
+(cd "$P" && "$CA" statusline --install >/dev/null)
+expect "--install keeps a shared settings.json a link" "yes" "$(yes_if [ -L "$SG" ])"
+expect "...and writes through it" "1" "$(grep -c statusLine "$HOME/.claude-alpha/settings.json")"
+rm -f -- "$P/.claude-account"
+
+echo "shell completion"
+if bash -c ". '$ROOT/completions/claude-accounts.bash'"; then ok "bash completion loads"; else bad "bash completion loads"; fi
+comp() { # words... → completions for the last word
+  PATH="$ROOT/bin:$PATH" bash -c ". '$ROOT/completions/claude-accounts.bash'; COMP_WORDS=($*); COMP_CWORD=\$((\${#COMP_WORDS[@]}-1)); _claude_accounts; echo \"\${COMPREPLY[*]}\""
+}
+expect "completes commands and accounts" "gamma" "$(comp ca ga)"
+expect "completes subcommands" "statusline stop" "$(comp ca st | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//')"
+expect "completes account names after use" "alpha" "$(comp ca use al)"
+expect "completes flags of new" "--clean" "$(comp ca new x --c)"
+if command -v zsh >/dev/null 2>&1; then
+  if zsh -n "$ROOT/completions/claude-accounts.zsh"; then ok "zsh completion parses"; else bad "zsh completion parses"; fi
+fi
+
 echo "install / uninstall (fake HOME, fake claude)"
 IH="$T/ihome"; mkdir -p "$IH"
 inst() { HOME="$IH" SHELL=/bin/zsh CLAUDE_ACCOUNTS_DIR="$IH/.config/claude-accounts" PATH="$fake:$PATH" LANG=C LC_ALL='' bash "$ROOT/install.sh" "$@" </dev/null; }
@@ -164,8 +222,14 @@ expect "install skips wrappers when looking for the real claude" "CLAUDE_REAL=$f
 expect "install records the current account" "personal=~/.claude" "$(cat "$IH/.config/claude-accounts/accounts" 2>/dev/null)"
 expect "install creates ~/.zshrc with the block" "1" "$(grep -cxF '# >>> claude-accounts >>>' "$IH/.zshrc" 2>/dev/null)"
 expect "install copies the scripts" "yes" "$(yes_if [ -x "$IH/.local/share/claude-accounts/bin/claude-accounts" ])"
+expect "install copies the completions" "yes" "$(yes_if [ -f "$IH/.local/share/claude-accounts/completions/claude-accounts.zsh" ])"
+expect "the rc block loads the completion" "1" "$(grep -c 'completions/claude-accounts.zsh' "$IH/.zshrc")"
 inst >/dev/null 2>&1
 expect "running install again is idempotent" "1" "$(grep -cxF '# >>> claude-accounts >>>' "$IH/.zshrc")"
+printf 'top\n# >>> claude-accounts >>>\nexport PATH="/old:$PATH"\n# <<< claude-accounts <<<\n' > "$IH/.zshrc"
+inst >/dev/null 2>&1
+expect "an older block is upgraded in place" "1 1 0" "$(grep -cxF '# >>> claude-accounts >>>' "$IH/.zshrc") $(grep -c 'completions/' "$IH/.zshrc") $(grep -c '/old:' "$IH/.zshrc")"
+expect "upgrading keeps the rest of the file" "top" "$(head -1 "$IH/.zshrc")"
 inst --uninstall >/dev/null 2>&1
 expect "uninstall removes the block" "0" "$(grep -cxF '# >>> claude-accounts >>>' "$IH/.zshrc")"
 expect "uninstall keeps the accounts" "personal=~/.claude" "$(cat "$IH/.config/claude-accounts/accounts")"

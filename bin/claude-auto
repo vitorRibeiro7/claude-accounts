@@ -8,7 +8,7 @@
 # Maestri, terminal presets…).
 HERE="$(cd "$(dirname "$0")" && pwd)"
 if [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
-  d="$("$HERE/claude-accounts" _dir)"     # empty = default account (~/.claude)
+  d="$("$HERE/claude-accounts" _dir)" || exit 1     # empty = default account (~/.claude)
   [ -n "$d" ] && export CLAUDE_CONFIG_DIR="$d"
 fi
 

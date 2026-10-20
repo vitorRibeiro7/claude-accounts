@@ -19,7 +19,7 @@ if [ ! -x "${CLAUDE_REAL:-}" ]; then
 fi
 
 if [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
-  d="$("$HERE/claude-accounts" _dir)"
+  d="$("$HERE/claude-accounts" _dir)" || exit 1
   [ -n "$d" ] && export CLAUDE_CONFIG_DIR="$d"
 fi
 

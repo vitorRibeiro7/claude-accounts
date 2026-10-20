@@ -12,6 +12,7 @@ set -euo pipefail
 
 REPO="${CLAUDE_ACCOUNTS_REPO:-https://github.com/vitorRibeiro7/claude-accounts}"
 DEST="${CLAUDE_ACCOUNTS_BIN:-$HOME/.local/share/claude-accounts/bin}"
+COMP="$(dirname "$DEST")/completions"
 CFG="${CLAUDE_ACCOUNTS_DIR:-$HOME/.config/claude-accounts}"
 LEGACY_CFG="$HOME/.config/claude-contas"           # earlier Portuguese-only version
 START="# >>> claude-accounts >>>"
@@ -61,7 +62,7 @@ ask() { # prompt default → answer (reads the terminal even when piped through 
 
 if [ "$mode" = uninstall ]; then
   while IFS= read -r rc; do strip_block "$rc" "$START" "$END" && echo "cleaned $rc"; done < <(rc_files)
-  rm -rf "$DEST"
+  rm -f -- "$DEST/claude" "$DEST/claude-accounts" "$DEST/claude-auto" "$COMP/claude-accounts.bash" "$COMP/claude-accounts.zsh"
   echo "Done. Your accounts in $CFG and the ~/.claude-* folders were kept."
   exit 0
 fi
@@ -89,6 +90,7 @@ echo "real claude: $real"
 # 3. scripts
 mkdir -p "$DEST" "$CFG"
 cp "$HERE"/bin/* "$DEST"/ && chmod +x "$DEST"/*
+mkdir -p "$COMP" && cp "$HERE"/completions/* "$COMP"/
 printf 'CLAUDE_REAL=%q\n' "$real" > "$CFG/config"
 touch "$CFG/accounts"
 
@@ -120,19 +122,23 @@ if [ -z "$lang" ] && [ ! -f "$CFG/lang" ]; then
 fi
 [ -n "$lang" ] && "$DEST/claude-accounts" lang "$lang" >/dev/null
 
-# 7. PATH + alias in the shell startup files (marked block, with a backup)
+# 7. PATH, alias and completion in the shell startup files (marked block, with a backup).
+#    An older block is replaced, so upgrades pick up new lines.
 block="$START
 export PATH=\"$DEST:\$PATH\"
 alias ca='claude-accounts'
+if [ -n \"\${ZSH_VERSION:-}\" ]; then . \"$COMP/claude-accounts.zsh\" 2>/dev/null; elif [ -n \"\${BASH_VERSION:-}\" ]; then . \"$COMP/claude-accounts.bash\" 2>/dev/null; fi
 $END"
+current_block() { awk -v s="$START" -v e="$END" '$0 == s { p = 1 } p { print } $0 == e { p = 0 }' "$1"; }
 while IFS= read -r rc; do
-  if [ -f "$rc" ] && grep -qxF "$START" "$rc" && ! grep -qxF "$LEGACY_START" "$rc"; then
+  if [ -f "$rc" ] && [ "$(current_block "$rc")" = "$block" ] && ! grep -qxF "$LEGACY_START" "$rc"; then
     echo "already configured: $rc"; continue
   fi
   note="created"
   if [ -f "$rc" ]; then cp "$rc" "$rc.bak-claude-accounts"; note="backup: $rc.bak-claude-accounts"; fi
   strip_block "$rc" "$LEGACY_START" "$LEGACY_END" && echo "removed the old claude-contas block from $rc"
-  grep -qxF "$START" "$rc" 2>/dev/null || printf '\n%s\n' "$block" >> "$rc"
+  strip_block "$rc" "$START" "$END" && note="updated, $note"
+  printf '\n%s\n' "$block" >> "$rc"
   echo "configured $rc ($note)"
 done < <(rc_files)
 

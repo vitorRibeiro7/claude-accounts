@@ -8,7 +8,13 @@
 #   ~/.config/claude-accounts/base       name of the account that holds the shared config
 #   ~/.config/claude-accounts/lang       UI language: en (default) or pt-BR
 #   ~/.config/claude-accounts/sessions/  one file per session opened through the wrapper
-VERSION="1.0.0"
+#
+# Which account a `claude` launch uses, first match wins:
+#   1. CLAUDE_CONFIG_DIR already set     (explicit folder, used as is)
+#   2. CLAUDE_ACCOUNT=NAME               (per terminal / per command)
+#   3. .claude-account in this folder or a parent   (per project, written by `ca here NAME`)
+#   4. the global active account         (`ca NAME`)
+VERSION="1.1.0"
 CFG="${CLAUDE_ACCOUNTS_DIR:-$HOME/.config/claude-accounts}"
 ACCOUNTS="$CFG/accounts"
 ACTIVE="$CFG/active"
@@ -17,7 +23,8 @@ PROC_NAME="${CLAUDE_ACCOUNTS_PROC_NAME:-claude}"   # only the tests change this
 # Items a new account can share with another one (conversations, settings, plugins…).
 SHAREABLE="projects settings.json plugins skills file-history history.jsonl"
 BACKUP_SUFFIX=".before-share"
-RESERVED="list use new base share remove sessions stop lang doctor help version"
+RESERVED="list use new base share remove here sessions stop lang doctor statusline prompt help version"
+PIN_FILE=".claude-account"
 
 mkdir -p "$CFG"; touch "$ACCOUNTS"
 
@@ -76,6 +83,39 @@ active() {
   local a; a="$(tr -d '[:space:]' 2>/dev/null < "$ACTIVE")"
   [ -n "$a" ] && [ -n "$(dir_of "$a")" ] && { echo "$a"; return; }
   names | head -1
+}
+
+# Which account applies HERE, and why. Sets RES_NAME and RES_SRC ("env", "global" or the
+# path of the .claude-account file). Fails if a pin names an account that doesn't exist:
+# opening Claude on the wrong account is worse than not opening it.
+resolve() {
+  local d
+  RES_NAME=""; RES_SRC=""
+  if [ -n "${CLAUDE_ACCOUNT:-}" ]; then RES_NAME="$CLAUDE_ACCOUNT"; RES_SRC="env"
+  else
+    d="$PWD"
+    while [ -n "$d" ]; do
+      if [ -f "$d/$PIN_FILE" ]; then
+        RES_NAME="$(tr -d '[:space:]' 2>/dev/null < "$d/$PIN_FILE")"; RES_SRC="$d/$PIN_FILE"; break
+      fi
+      d="${d%/*}"
+    done
+  fi
+  if [ -z "$RES_SRC" ]; then RES_NAME="$(active)"; RES_SRC="global"; return 0; fi
+  [ -n "$(dir_of "$RES_NAME")" ] && return 0
+  if [ "$RES_SRC" = env ]; then
+    die "CLAUDE_ACCOUNT='$RES_NAME' is not an account (see: ca list)" "CLAUDE_ACCOUNT='$RES_NAME' não é uma conta (veja: ca list)"
+  fi
+  die "$(tildify "$RES_SRC") names '$RES_NAME', which is not an account (see: ca list, or: ca here --unset)" \
+      "$(tildify "$RES_SRC") aponta para '$RES_NAME', que não é uma conta (veja: ca list, ou: ca here --unset)"
+}
+current() { resolve; echo "$RES_NAME"; }
+
+# folder → account name (the folder's basename if it isn't registered)
+name_of_dir() {
+  local n d="${1%/}"
+  for n in $(names); do [ "$(dir_of "$n")" = "$d" ] && { echo "$n"; return; }; done
+  basename "$d"
 }
 
 # The BASE is the account that holds the real config; the others link to it.
@@ -190,19 +230,30 @@ switch_base() {
 
 # ---------- commands ----------
 show() {
-  local c; c="$(active)"
+  local c from
+  resolve; c="$RES_NAME"
   [ -n "$c" ] || die "no accounts yet. Run: ca new NAME" "nenhuma conta cadastrada. Rode: ca new NOME"
-  say "active account: $c → $(dir_of "$c") · $(email_of "$c")" "conta ativa: $c → $(dir_of "$c") · $(email_of "$c")"
+  case "$RES_SRC" in
+    global) say "active account: $c → $(dir_of "$c") · $(email_of "$c")" "conta ativa: $c → $(dir_of "$c") · $(email_of "$c")"; return ;;
+    env) from="\$CLAUDE_ACCOUNT" ;;
+    *) from="$(tildify "$RES_SRC")" ;;
+  esac
+  say "account here: $c (from $from) → $(dir_of "$c") · $(email_of "$c")" "conta aqui: $c (via $from) → $(dir_of "$c") · $(email_of "$c")"
 }
 
 cmd_list() {
-  local c n m r b; c="$(active)"; b="$(base)"
+  local c n m r b here=""; c="$(active)"; b="$(base)"
   [ -n "$(names)" ] || die "no accounts yet. Run: ca new NAME" "nenhuma conta cadastrada. Rode: ca new NOME"
+  ( resolve ) >/dev/null 2>&1 && resolve && [ "$RES_SRC" != global ] && here="$RES_NAME"
   for n in $(names); do
-    m=" "; [ "$n" = "$c" ] && m="*"
+    m=" "; [ "$n" = "$c" ] && m="*"; [ "$n" = "$here" ] && m=">"
     r="$n"; [ "$n" = "$b" ] && r="$n (base)"
     printf '%s %-20s %-34s %s\n' "$m" "$r" "$(tildify "$(dir_of "$n")")" "$(email_of "$n")"
   done
+  if [ -n "$here" ]; then
+    if [ "$RES_SRC" = env ]; then r="\$CLAUDE_ACCOUNT"; else r="$(tildify "$RES_SRC")"; fi
+    say "> = used here (from $r) · * = global" "> = usada aqui (via $r) · * = global"
+  fi
 }
 
 cmd_use() {
@@ -215,8 +266,67 @@ cmd_use() {
     say "Close them or run:  ca stop   and try again." "Feche-as ou rode:  ca stop   e tente de novo."
     exit 1
   fi
-  echo "$1" > "$ACTIVE"; show
+  echo "$1" > "$ACTIVE"
+  resolve
+  if [ "$RES_SRC" = global ]; then show
+  else say "Global account is now '$1', but '$RES_NAME' applies here (see: ca)." \
+           "A conta global agora é '$1', mas aqui vale '$RES_NAME' (veja: ca)."; fi
 }
+
+# ca here [NAME | --unset] — pin this folder (and its subfolders) to an account
+cmd_here() {
+  case "${1:-}" in
+    "") show ;;
+    --unset)
+      [ -f "./$PIN_FILE" ] || die "no $PIN_FILE in this folder" "não há $PIN_FILE nesta pasta"
+      rm -f -- ./.claude-account
+      say "Removed $PIN_FILE. Now: $(current)" "Removido $PIN_FILE. Agora: $(current)" ;;
+    *)
+      [ -n "$(dir_of "$1")" ] || die "account '$1' does not exist (see: ca list)" "conta '$1' não existe (veja: ca list)"
+      echo "$1" > "./$PIN_FILE"
+      say "This folder and its subfolders now use '$1': just run claude here." \
+          "Esta pasta e as subpastas agora usam '$1': é só rodar claude aqui."
+      if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && ! git check-ignore -q "$PIN_FILE" 2>/dev/null; then
+        say "Tip: it's personal, keep it out of git:  echo $PIN_FILE >> ~/.config/git/ignore" \
+            "Dica: é pessoal, deixe fora do git:  echo $PIN_FILE >> ~/.config/git/ignore"
+      fi ;;
+  esac
+}
+
+# Claude Code status line: "● work · you@company.com". Runs INSIDE Claude, so the account is
+# whatever CLAUDE_CONFIG_DIR the session was started with.
+cmd_statusline() {
+  [ "${1:-}" = "--install" ] && { statusline_install; return; }
+  [ -t 0 ] || cat > /dev/null                      # Claude sends session JSON on stdin; not needed
+  local n; n="$(name_of_dir "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
+  printf '\033[1;36m●\033[0m \033[1m%s\033[0m \033[2m· %s\033[0m\n' "$n" "$(email_of "$n")"
+}
+
+statusline_install() {
+  local f cmd entry
+  f="$(dir_of "$(current)")/settings.json"
+  cmd="$(cd "$(dirname "$0")" && pwd)/claude-accounts statusline"
+  entry="\"statusLine\": { \"type\": \"command\", \"command\": \"$cmd\" }"
+  if [ -f "$f" ] && grep -q '"statusLine"' "$f"; then
+    die "$(tildify "$f") already has a statusLine; to combine, call '$cmd' from your script" \
+        "$(tildify "$f") já tem uma statusLine; para combinar, chame '$cmd' no seu script"
+  fi
+  # writing with > (never mv) keeps a shared, symlinked settings.json shared
+  if [ ! -s "$f" ] || [ "$(tr -d '[:space:]' < "$f")" = "{}" ]; then
+    printf '{\n  %s\n}\n' "$entry" > "$f"
+  elif command -v jq >/dev/null 2>&1; then
+    jq --arg c "$cmd" '.statusLine = {type: "command", command: $c}' "$f" > "$f.tmp" && cat "$f.tmp" > "$f"
+    rm -f -- "$f.tmp"
+  else
+    say "Install jq, or add this to $(tildify "$f"):" "Instale o jq, ou adicione isto em $(tildify "$f"):"
+    echo "  $entry"; exit 1
+  fi
+  say "Status line added to $(tildify "$f"). Restart Claude Code to see it." \
+      "Status line adicionada em $(tildify "$f"). Reinicie o Claude Code para ver."
+}
+
+# Short account name for shell prompts (starship, p10k, PS1). Silent on errors.
+cmd_prompt() { ( resolve && printf '%s\n' "$RES_NAME" ) 2>/dev/null; return 0; }
 
 cmd_new() {
   local name="${1:-}" other dir
@@ -387,7 +497,7 @@ cmd_doctor() {
   found="$(command -v claude 2>/dev/null)"
   check "$(t "'claude' in PATH is the wrapper: ${found:-(none)}" "'claude' no PATH é o wrapper: ${found:-(nenhum)}")" \
     [ "$found" = "$(cd "$(dirname "$0")" && pwd)/claude" ]
-  c="$(active)"
+  c="$(current)"
   check "$(t "active account folder: ${c:-(none)} → $(dir_of "$c")" "pasta da conta ativa: ${c:-(nenhuma)} → $(dir_of "$c")")" has_dir
   check "$(t "active account login: $(email_of "$c")" "login da conta ativa: $(email_of "$c")")" logged_in
   [ "$bad" -eq 0 ] || say "Fix: re-run install.sh and open a new terminal (see docs/how-it-works.md)." \
@@ -402,6 +512,7 @@ claude-accounts (ca) — várias contas do Claude Code na mesma máquina
   ca                          conta ativa e e-mail
   ca list                     todas as contas (* = ativa)
   ca NOME | ca use NOME       troca para a conta NOME (recusa se houver sessão aberta)
+  ca here [NOME | --unset]    fixa esta pasta (e subpastas) numa conta (.claude-account)
   ca new NOME [--clean | --share OUTRA]
                               cria conta; por padrão já nasce ligada à base
   ca base [NOME]              mostra / troca a base (conta que guarda plugins, skills e config)
@@ -411,11 +522,14 @@ claude-accounts (ca) — várias contas do Claude Code na mesma máquina
   ca sessions                 sessões do Claude abertas
   ca stop                     encerra todas as sessões (pede confirmação)
   ca lang [en|pt-BR]          idioma das mensagens
+  ca statusline [--install]   conta e e-mail na status line do Claude Code
+  ca prompt                   nome da conta, para o prompt do shell
   ca doctor                   confere a instalação
   ca version | ca help
 
   claude                      abre o Claude Code na conta ativa
   claude-auto                 igual, mas continua a conversa do diretório se houver
+  CLAUDE_ACCOUNT=NOME claude  só este comando / terminal em outra conta
 EOF
   else cat <<'EOF'
 claude-accounts (ca) — several Claude Code accounts on one machine
@@ -423,6 +537,7 @@ claude-accounts (ca) — several Claude Code accounts on one machine
   ca                          active account and email
   ca list                     all accounts (* = active)
   ca NAME | ca use NAME       switch to account NAME (refuses while sessions are open)
+  ca here [NAME | --unset]    pin this folder (and subfolders) to an account (.claude-account)
   ca new NAME [--clean | --share OTHER]
                               create an account; linked to the base by default
   ca base [NAME]              show / move the base (account holding plugins, skills, config)
@@ -432,11 +547,14 @@ claude-accounts (ca) — several Claude Code accounts on one machine
   ca sessions                 open Claude sessions
   ca stop                     terminate all sessions (asks first)
   ca lang [en|pt-BR]          UI language
+  ca statusline [--install]   account and email in Claude Code's status line
+  ca prompt                   account name, for your shell prompt
   ca doctor                   check the installation
   ca version | ca help
 
   claude                      open Claude Code on the active account
   claude-auto                 same, but continue this directory's conversation if any
+  CLAUDE_ACCOUNT=NAME claude  just this command / terminal on another account
 EOF
   fi
 }
@@ -451,13 +569,17 @@ case "${1:-}" in
   remove|rm)          shift; cmd_remove "$@" ;;
   sessions)           cmd_sessions ;;
   stop)               cmd_stop ;;
+  here)               cmd_here "${2:-}" ;;
+  statusline)         cmd_statusline "${2:-}" ;;
+  prompt)             cmd_prompt ;;
   lang)               cmd_lang "${2:-}" ;;
   doctor)             cmd_doctor ;;
   version|--version|-v) echo "claude-accounts $VERSION" ;;
   help|--help|-h)     cmd_help ;;
-  _dir)               # (internal) folder of the active account; empty = default account
-    c="$(active)"; [ -n "$c" ] && ! is_default "$c" && dir_of "$c"
+  _dir)               # (internal) folder of the account that applies here; empty = default account
+    resolve; [ -n "$RES_NAME" ] && ! is_default "$RES_NAME" && dir_of "$RES_NAME"
     exit 0 ;;
+  _names)             names ;;   # (internal) for shell completion
   -*)                 die "unknown option: $1 (see: ca help)" "opção desconhecida: $1 (veja: ca help)" ;;
   *)                  cmd_use "$1" ;;
 esac

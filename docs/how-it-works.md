@@ -26,6 +26,15 @@ you type:  claude
 
 If `CLAUDE_CONFIG_DIR` is already set (for example by an alias that pins one account), the wrapper leaves it alone.
 
+"The active account" is really **the account in effect here**, decided at every launch (first match wins):
+
+1. `CLAUDE_CONFIG_DIR` already set → used as is;
+2. `CLAUDE_ACCOUNT=NAME` → that account;
+3. a `.claude-account` file in the current folder or any parent (`ca here NAME`) → that account;
+4. otherwise the global account in `~/.config/claude-accounts/active` (`ca NAME`).
+
+A pin or `CLAUDE_ACCOUNT` naming a missing account is an error, so `claude` never silently starts on the wrong one. Details: [per-project-accounts.md](per-project-accounts.md).
+
 ## The default account is a special case
 
 `~/.claude` is the account Claude Code uses **when `CLAUDE_CONFIG_DIR` is not set**. In that mode the login data lives in `~/.claude.json` (in your home, **outside** the folder). For the other accounts it lives **inside** the folder: `~/.claude-work/.claude.json`.

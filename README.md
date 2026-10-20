@@ -35,6 +35,8 @@ Claude Code keeps one login per config folder. If you have a personal subscripti
 `claude-accounts` gives every account its own folder and switches between them by setting [`CLAUDE_CONFIG_DIR`](https://docs.claude.com/en/docs/claude-code/settings) for you:
 
 - ⚡ **One command to switch** — `ca work`, then `claude`. That's it.
+- 📁 **Per-project accounts** — `ca here work` once, and `claude` opens on the right account in that repo. Personal and work sessions side by side.
+- 👀 **Always know where you are** — account and email in Claude Code's status line and in your shell prompt.
 - 🔐 **Logins stay separate** — each account keeps its own credentials; nothing is copied or shared.
 - 🧩 **Shared setup** — install a plugin or skill once, have it in every account (optional, per account).
 - 💬 **Resume across accounts** — shared conversation history, so `/resume` works no matter which account you're on.
@@ -76,6 +78,27 @@ ca                 # 4. check: shows the work email
 
 Switch back any time with `ca personal`. Full guide: [docs/adding-an-account.md](docs/adding-an-account.md).
 
+## Per-project accounts
+
+Even better: don't switch at all. Pin a folder once and `claude` picks the account by itself, there and in every subfolder.
+
+```bash
+cd ~/work/api && ca here work     # writes .claude-account
+claude                            # → work account
+cd ~/side-project && claude       # → your global account
+CLAUDE_ACCOUNT=personal claude    # one-off override, any folder
+```
+
+Sessions on different accounts can run **at the same time** in different terminals. Precedence and safety rules: [docs/per-project-accounts.md](docs/per-project-accounts.md).
+
+## See the account everywhere
+
+```bash
+ca statusline --install   # Claude Code's bottom bar: ● work · you@company.com
+```
+
+`ca prompt` prints the account for your shell prompt (starship, powerlevel10k, PS1 snippets in [docs/status-line.md](docs/status-line.md)). Tab completion for commands and account names is set up by the installer for zsh and bash.
+
 > **Tip:** if your browser is already signed in to another Anthropic account, `/login` may silently authorize that one. Use a private window.
 
 ## Commands
@@ -84,16 +107,20 @@ Switch back any time with `ca personal`. Full guide: [docs/adding-an-account.md]
 |---|---|
 | `ca` | show the active account and its email |
 | `ca list` | all accounts; `*` marks the active one |
-| `ca NAME` / `ca use NAME` | switch to NAME (refuses while sessions are open) |
+| `ca NAME` / `ca use NAME` | switch the global account to NAME (refuses while sessions are open) |
+| `ca here [NAME \| --unset]` | pin this folder and its subfolders to an account |
 | `ca new NAME [--clean \| --share OTHER]` | create an account — linked to the base by default, isolated with `--clean` |
 | `ca base [NAME]` | show / move the **base**: the account that holds the shared plugins, skills and settings |
 | `ca share NAME OTHER` | link an existing account's conversations/plugins/settings to OTHER's |
 | `ca remove NAME [--delete-dir]` | drop it from the list (the folder is only deleted with `--delete-dir`) |
 | `ca sessions` | list open Claude sessions and their accounts |
 | `ca stop` | terminate all sessions (asks first) |
+| `ca statusline [--install]` | account and email in Claude Code's status line |
+| `ca prompt` | account name for your shell prompt |
 | `ca lang [en\|pt-BR]` | UI language |
 | `ca doctor` | check the installation |
-| `claude` | Claude Code on the active account |
+| `claude` | Claude Code on the account in effect here |
+| `CLAUDE_ACCOUNT=NAME claude` | one command or terminal on another account |
 | `claude-auto` | same, but continues this directory's last conversation if there is one — great for IDEs and terminal presets |
 
 ## Shared setup, separate logins
@@ -113,7 +140,7 @@ What's **never** shared: the login. Details and gotchas: [docs/shared-config.md]
 
 ```
 you type:  claude
-   → wrapper (first in PATH) asks `ca` for the active account's folder
+   → wrapper (first in PATH) asks `ca` which account applies here
    → exports CLAUDE_CONFIG_DIR=~/.claude-work
    → execs the real claude
 ```
@@ -123,6 +150,7 @@ State is plain text in `~/.config/claude-accounts/`. The default account (`~/.cl
 ## Docs
 
 - [Adding an account](docs/adding-an-account.md) · [Removing an account](docs/removing-an-account.md)
+- [Per-project accounts](docs/per-project-accounts.md) · [Status line & shell prompt](docs/status-line.md)
 - [Shared config across accounts](docs/shared-config.md)
 - [Moving the default account's login to a named account](docs/separate-default-account.md)
 - [macOS notes](docs/macos.md)
