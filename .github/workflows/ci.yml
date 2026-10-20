@@ -21,8 +21,6 @@ jobs:
           ln -s /bin/bash "$RUNNER_TEMP/bash32/bash"
           echo "$RUNNER_TEMP/bash32" >> "$GITHUB_PATH"
       - run: bash --version | head -1
-      - name: zsh completion parses
-        run: zsh -n completions/claude-accounts.zsh || true
       - run: ./tests/test.sh
 
   shellcheck:
