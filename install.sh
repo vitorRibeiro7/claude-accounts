@@ -129,10 +129,11 @@ while IFS= read -r rc; do
   if [ -f "$rc" ] && grep -qxF "$START" "$rc" && ! grep -qxF "$LEGACY_START" "$rc"; then
     echo "already configured: $rc"; continue
   fi
-  [ -f "$rc" ] && cp "$rc" "$rc.bak-claude-accounts"
+  note="created"
+  if [ -f "$rc" ]; then cp "$rc" "$rc.bak-claude-accounts"; note="backup: $rc.bak-claude-accounts"; fi
   strip_block "$rc" "$LEGACY_START" "$LEGACY_END" && echo "removed the old claude-contas block from $rc"
   grep -qxF "$START" "$rc" 2>/dev/null || printf '\n%s\n' "$block" >> "$rc"
-  echo "configured $rc (backup: $rc.bak-claude-accounts)"
+  echo "configured $rc ($note)"
 done < <(rc_files)
 
 existing="$(command -v ca 2>/dev/null || true)"
