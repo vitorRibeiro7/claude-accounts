@@ -15,7 +15,17 @@ fi
 # Claude stores conversations in <account dir>/projects/<path with / and . turned into ->
 project="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/${PWD//[\/.]/-}"
 
-if compgen -G "$project/*.jsonl" > /dev/null 2>&1; then
-  exec "$HERE/claude" --continue "$@"
+[ -n "$(compgen -G "$project/*.jsonl" 2>/dev/null)" ] || exec "$HERE/claude" "$@"
+
+# `--continue` can refuse at startup, e.g. when the last conversation became a background
+# session ("moved to a background session … registered from another machine or container").
+# Then it exits with an error within a few seconds; start a new session instead of failing.
+# Not a fork: the background transcript can be huge, and copying it on every launch is costly.
+start=$SECONDS
+"$HERE/claude" --continue "$@"
+code=$?
+if [ "$code" -ne 0 ] && [ $((SECONDS - start)) -lt "${CLAUDE_AUTO_GRACE:-5}" ]; then
+  echo "claude-auto: couldn't continue the last conversation here (it may be a background session). Starting a new one; use 'claude --resume' to pick an old one." >&2
+  exec "$HERE/claude" "$@"
 fi
-exec "$HERE/claude" "$@"
+exit "$code"

@@ -130,7 +130,13 @@ expect "a stale entry (PID reused) does not block and is cleaned" "no" "$([ -e "
 
 echo "wrapper"
 fake="$T/fakebin"; mkdir -p "$fake"
-printf '#!/usr/bin/env bash\necho "dir=${CLAUDE_CONFIG_DIR:-unset} args=$*"\n' > "$fake/claude"; chmod +x "$fake/claude"
+cat > "$fake/claude" <<'FAKE'
+#!/usr/bin/env bash
+# FAKE_FAIL_CONTINUE: refuse --continue like Claude Code does when the last conversation is a background session
+if [ "${1:-}" = --continue ] && [ -n "${FAKE_FAIL_CONTINUE:-}" ]; then echo "moved to a background session" >&2; exit 1; fi
+echo "dir=${CLAUDE_CONFIG_DIR:-unset} args=$*"
+FAKE
+chmod +x "$fake/claude"
 echo "CLAUDE_REAL=$fake/claude" > "$CLAUDE_ACCOUNTS_DIR/config"
 expect "claude runs on the active account" "dir=$HOME/.claude-alpha args=-p hi" "$("$ROOT/bin/claude" -p hi)"
 expect "an explicit CLAUDE_CONFIG_DIR wins" "dir=/x args=" "$(CLAUDE_CONFIG_DIR=/x "$ROOT/bin/claude")"
@@ -144,6 +150,10 @@ mkdir -p "$T/repo" "$HOME/.claude/projects/${T//[\/.]/-}-repo"
 expect "claude-auto starts fresh without history" "dir=unset args=" "$(cd "$T" && "$ROOT/bin/claude-auto")"
 touch "$HOME/.claude/projects/${T//[\/.]/-}-repo/s.jsonl"
 expect "claude-auto continues when there is history" "dir=unset args=--continue" "$(cd "$T/repo" && "$ROOT/bin/claude-auto")"
+expect "claude-auto starts a new session when --continue refuses at startup" "dir=unset args=-x" \
+  "$(cd "$T/repo" && FAKE_FAIL_CONTINUE=1 "$ROOT/bin/claude-auto" -x 2>/dev/null)"
+expect "...and says why" "1" "$(cd "$T/repo" && FAKE_FAIL_CONTINUE=1 "$ROOT/bin/claude-auto" 2>&1 >/dev/null | grep -c "couldn't continue")"
+refuses "a late failure is passed through, not retried" bash -c "cd '$T/repo' && FAKE_FAIL_CONTINUE=1 CLAUDE_AUTO_GRACE=0 '$ROOT/bin/claude-auto'"
 
 echo "language"
 expect "English by default" "(not logged in)" "$("$CA" list | grep ' gamma ' | sed 's/.*(not/(not/')"

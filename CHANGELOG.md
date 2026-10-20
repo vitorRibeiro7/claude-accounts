@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- `claude-auto` no longer dead-ends when `claude --continue` refuses at startup (e.g. the last
+  conversation became a background session): it starts a new session on the same account and
+  points to `claude --resume`.
+
 ### Changed
 - `ca here` keeps the pin out of git automatically: inside a repo it adds `.claude-account` to
   `.git/info/exclude` (local, not versioned) instead of printing a tip. It warns if the file was
