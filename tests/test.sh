@@ -179,6 +179,22 @@ refuses "--unset without a pin" bash -c "cd '$P/src' && '$CA' here --unset"
 expect "switching globally inside a pinned folder says the pin wins" "1" "$(cd "$P" && "$CA" alpha | grep -c "'gamma' applies here")"
 "$CA" personal >/dev/null
 
+echo "pins stay out of git"
+R="$T/repo-git"; mkdir -p "$R/sub"; git -C "$R" init -q
+printf 'node_modules\n' > "$R/.gitignore"
+(cd "$R" && "$CA" here gamma >/dev/null)
+expect "ca here adds the pin to .git/info/exclude" "1" "$(grep -cxF .claude-account "$R/.git/info/exclude")"
+expect "git does not see the pin" "?? .gitignore" "$(git -C "$R" status --porcelain)"
+expect "the shared .gitignore is untouched" "node_modules" "$(cat "$R/.gitignore")"
+(cd "$R" && "$CA" here alpha >/dev/null)
+expect "pinning again does not duplicate the line" "1" "$(grep -cxF .claude-account "$R/.git/info/exclude")"
+(cd "$R/sub" && "$CA" here alpha >/dev/null)
+expect "a pin in a subfolder is ignored too" "" "$(git -C "$R" status --porcelain | grep claude-account)"
+rm -f -- "$R/sub/.claude-account"
+R2="$T/repo-tracked"; mkdir -p "$R2"; git -C "$R2" init -q; echo gamma > "$R2/.claude-account"
+git -C "$R2" add .claude-account
+expect "warns when the pin is already committed" "1" "$(cd "$R2" && "$CA" here gamma | grep -c 'git rm --cached')"
+
 echo "status line"
 echo '{"oauthAccount":{"emailAddress":"g@example.com"}}' > "$HOME/.claude-gamma/.claude.json"
 sl="$(echo '{"model":{}}' | CLAUDE_CONFIG_DIR="$HOME/.claude-gamma" "$CA" statusline | sed 's/\x1b\[[0-9;]*m//g')"

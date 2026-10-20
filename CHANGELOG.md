@@ -3,6 +3,13 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- `ca here` keeps the pin out of git automatically: inside a repo it adds `.claude-account` to
+  `.git/info/exclude` (local, not versioned) instead of printing a tip. It warns if the file was
+  already committed.
+
 ## [1.1.0] - 2026-10-20
 
 ### Added

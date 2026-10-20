@@ -52,10 +52,7 @@ O arquivo pode ficar em qualquer nível: um `~/trabalho/.claude-account` faz tod
 
 - **Apontar para uma conta que não existe é erro**, não volta para a global em silêncio: o `claude` se recusa a abrir em vez de abrir na conta errada. Corrija com `ca list` ou `ca here --unset`.
 - O arquivo só escolhe entre as **suas** contas. Não cria conta nem aponta para pastas arbitrárias.
-- É pessoal, então deixe fora do git. O `ca here` avisa quando você está num repositório que não o ignora:
-  ```bash
-  mkdir -p ~/.config/git && echo .claude-account >> ~/.config/git/ignore
-  ```
+- **Nunca vai para o repositório.** A fixação é configuração pessoal, não do projeto. Dentro de um repositório git, o `ca here` adiciona o arquivo ao `.git/info/exclude`, a lista de ignorados local do git, que não é versionada. O `.gitignore` do time fica intacto e ninguém vê nada no `git status`. Se o arquivo já tiver sido commitado por engano, o `ca here` avisa e mostra o `git rm --cached` para corrigir.
 
 ## A conta no prompt do terminal
 

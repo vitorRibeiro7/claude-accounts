@@ -52,10 +52,7 @@ A pin can live anywhere: put one in `~/work/.claude-account` and every repo unde
 
 - **A pin to an account that doesn't exist is an error**, not a silent fallback: `claude` refuses to open instead of starting on the wrong account. Fix it with `ca list` or `ca here --unset`.
 - A pin only selects among **your** accounts. It can't create accounts or point to arbitrary folders.
-- The file is personal, so keep it out of git. `ca here` reminds you when you're in a repo that doesn't ignore it:
-  ```bash
-  mkdir -p ~/.config/git && echo .claude-account >> ~/.config/git/ignore
-  ```
+- **It never reaches your repo.** The pin is a personal setting, not project config. Inside a git repo, `ca here` adds it to `.git/info/exclude`, git's local ignore list, which is not versioned. Your team's `.gitignore` stays untouched and nobody sees anything in `git status`. If the file was already committed by mistake, `ca here` warns you and shows the `git rm --cached` to fix it.
 
 ## Show the account in your prompt
 
