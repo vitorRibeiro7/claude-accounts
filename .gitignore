@@ -1,0 +1,4 @@
+# Local backups
+*.tgz
+*.bak-claude-accounts
+.DS_Store

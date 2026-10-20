@@ -1,0 +1,463 @@
+#!/usr/bin/env bash
+# claude-accounts (alias: ca) — run several Claude Code accounts on one machine and switch
+# between them with one command. Works on Linux, WSL and macOS (bash 3.2+). See `ca help`.
+#
+# State (all plain text):
+#   ~/.config/claude-accounts/accounts   one account per line, NAME=DIR  (e.g. work=~/.claude-work)
+#   ~/.config/claude-accounts/active     name of the active account
+#   ~/.config/claude-accounts/base       name of the account that holds the shared config
+#   ~/.config/claude-accounts/lang       UI language: en (default) or pt-BR
+#   ~/.config/claude-accounts/sessions/  one file per session opened through the wrapper
+VERSION="1.0.0"
+CFG="${CLAUDE_ACCOUNTS_DIR:-$HOME/.config/claude-accounts}"
+ACCOUNTS="$CFG/accounts"
+ACTIVE="$CFG/active"
+SESSIONS="$CFG/sessions"
+PROC_NAME="${CLAUDE_ACCOUNTS_PROC_NAME:-claude}"   # only the tests change this
+# Items a new account can share with another one (conversations, settings, plugins…).
+SHAREABLE="projects settings.json plugins skills file-history history.jsonl"
+BACKUP_SUFFIX=".before-share"
+RESERVED="list use new base share remove sessions stop lang doctor help version"
+
+mkdir -p "$CFG"; touch "$ACCOUNTS"
+
+# ---------- i18n: every message is written as  t "english" "português" ----------
+ui_lang() {
+  local l="${CLAUDE_ACCOUNTS_LANG:-}"
+  [ -n "$l" ] || l="$(tr -d '[:space:]' 2>/dev/null < "$CFG/lang")"
+  case "$l" in pt|pt-BR|pt_BR|pt-br|pt_br) echo pt ;; *) echo en ;; esac
+}
+UI="$(ui_lang)"
+t()   { if [ "$UI" = pt ]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
+say() { t "$1" "$2"; echo; }
+die() { echo "$(t error erro): $(t "$1" "$2")" >&2; exit 1; }
+confirm() {
+  local ok; read -r -p "$(t "$1" "$2") $(t '(y/N)' '(s/N)') " ok
+  case "$ok" in y|Y|yes|s|S|sim) return 0 ;; esac
+  say "Cancelled." "Cancelado."; return 1
+}
+
+# ---------- accounts ----------
+valid_name() {
+  [[ "$1" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || return 1
+  case " $RESERVED " in *" $1 "*) return 1 ;; esac
+}
+expand() { echo "${1/#\~/$HOME}"; }
+
+# NAME → directory (empty if the account does not exist)
+dir_of() {
+  local d; d="$(awk -v n="$1" 'index($0, n "=") == 1 { print substr($0, length(n) + 2); exit }' "$ACCOUNTS")"
+  [ -n "$d" ] && expand "$d"
+  return 0
+}
+tildify() { case "$1" in "$HOME"*) echo "~${1#"$HOME"}" ;; *) echo "$1" ;; esac; }
+
+# The default Claude account is ~/.claude. It is the exception: its login lives in
+# ~/.claude.json (OUTSIDE the folder) and only works when CLAUDE_CONFIG_DIR is unset.
+is_default() { [ "$(dir_of "$1")" = "$HOME/.claude" ]; }
+json_of() { if is_default "$1"; then echo "$HOME/.claude.json"; else echo "$(dir_of "$1")/.claude.json"; fi; }
+
+# Email of the logged-in account. jq when available, otherwise a sed fallback (no python needed).
+email_of() {
+  local f e=""; f="$(json_of "$1")"
+  if [ -r "$f" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      e="$(jq -r '.oauthAccount.emailAddress // empty' "$f" 2>/dev/null)"
+    else
+      e="$(tr -d '\n' < "$f" | sed -n 's/.*"oauthAccount"[^}]*"emailAddress"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    fi
+  fi
+  if [ -n "$e" ]; then echo "$e"; else say "(not logged in)" "(sem login)"; fi
+}
+
+names() { sed -n 's/^\([^#=][^=]*\)=.*/\1/p' "$ACCOUNTS"; }
+
+active() {
+  local a; a="$(tr -d '[:space:]' 2>/dev/null < "$ACTIVE")"
+  [ -n "$a" ] && [ -n "$(dir_of "$a")" ] && { echo "$a"; return; }
+  names | head -1
+}
+
+# The BASE is the account that holds the real config; the others link to it.
+base() {
+  [ -r "$CFG/base" ] || return 0
+  local b; b="$(tr -d '[:space:]' < "$CFG/base")"
+  [ -n "$b" ] && [ -n "$(dir_of "$b")" ] && echo "$b"
+  return 0
+}
+
+drop_line() { # NAME — remove it from the accounts file (portable, no sed -i)
+  awk -v n="$1" 'index($0, n "=") != 1' "$ACCOUNTS" > "$ACCOUNTS.tmp"
+  cat "$ACCOUNTS.tmp" > "$ACCOUNTS"; rm -f "$ACCOUNTS.tmp"
+}
+
+# ---------- sessions ----------
+# The wrapper records every session it opens in $SESSIONS/<pid> (config dir, cwd, start time),
+# which works on every OS. Processes opened without the wrapper are still found with pgrep and,
+# on Linux, read from /proc.
+registered() { # PID → 0 if its registry entry belongs to a live session (stale entries are removed)
+  local f="$SESSIONS/$1"
+  [ -r "$f" ] || return 1
+  if kill -0 "$1" 2>/dev/null && [ "$(sed -n 3p "$f")" = "$(ps -o lstart= -p "$1" 2>/dev/null)" ]; then return 0; fi
+  rm -f "$f"; return 1
+}
+
+pids() {
+  local f p
+  {
+    for f in "$SESSIONS"/*; do
+      [ -e "$f" ] || continue
+      p="${f##*/}"; registered "$p" && echo "$p"
+    done
+    pgrep -u "$(id -u)" -x "$PROC_NAME" 2>/dev/null
+  } | sort -un
+}
+
+pid_cfg() { # PID → config dir the session runs with ("?" when it cannot be known)
+  local c
+  if [ -r "$SESSIONS/$1" ]; then sed -n 1p "$SESSIONS/$1"
+  elif [ -r "/proc/$1/environ" ]; then
+    c=$(tr '\0' '\n' < "/proc/$1/environ" | sed -n 's/^CLAUDE_CONFIG_DIR=//p'); echo "${c:-$HOME/.claude}"
+  else echo "?"; fi
+}
+
+pid_cwd() {
+  if [ -r "$SESSIONS/$1" ]; then sed -n 2p "$SESSIONS/$1"
+  elif [ -e "/proc/$1/cwd" ]; then readlink "/proc/$1/cwd"
+  elif command -v lsof >/dev/null 2>&1; then lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p'
+  fi
+}
+
+list_sessions() { # prints the sessions; returns how many there are
+  local n=0 p cfg cwd
+  for p in $(pids); do
+    cfg="$(pid_cfg "$p")"; cwd="$(pid_cwd "$p")"
+    [ "$cfg" = "?" ] && cfg="$(t '(unknown)' '(desconhecida)')" || cfg="$(basename "$cfg")"
+    printf '  PID %-7s %-10s %-24s %s\n' "$p" "$(ps -o etime= -p "$p" 2>/dev/null | tr -d ' ')" "$cfg" "$(tildify "$cwd")"
+    n=$((n+1))
+  done
+  return $n
+}
+
+# ---------- sharing ----------
+# Link the SHAREABLE items of DIR to those of SOURCE (symlinks), without losing anything:
+#  - folder (e.g. projects/): what the account already had is MERGED into the source (no overwrite);
+#  - file (e.g. settings.json): the account's own copy is kept as <item>.before-share;
+#  - the original is always kept as <item>.before-share, never deleted.
+share_items() {
+  local dir="$1" src="$2" item
+  for item in $SHAREABLE; do
+    [ -e "$src/$item" ] || continue
+    [ -L "$dir/$item" ] && [ "$(readlink "$dir/$item")" = "$src/$item" ] && continue
+    if [ -e "$dir/$item" ] && [ ! -L "$dir/$item" ]; then
+      [ -d "$dir/$item" ] && cp -an "$dir/$item/." "$src/$item/"
+      mv "$dir/$item" "$dir/$item$BACKUP_SUFFIX" || return 1
+    fi
+    ln -sfn "$src/$item" "$dir/$item" && say "  shared with $(basename "$src"): $item" "  compartilhado com $(basename "$src"): $item"
+  done
+}
+
+# Move the BASE from OLD to NEW: the real items go to NEW and every other account (OLD included)
+# is relinked there. Old paths keep working because they become links.
+switch_base() {
+  local old="$1" new="$2" dold dnew item src dst a target
+  dold="$(dir_of "$old")"; dnew="$(dir_of "$new")"
+  # check EVERYTHING before touching anything
+  for item in $SHAREABLE; do
+    src="$dold/$item"; dst="$dnew/$item"
+    if [ -e "$src" ] && [ ! -L "$src" ] && { [ -e "$dst" ] || [ -L "$dst" ]; } && [ "$(readlink "$dst")" != "$src" ]; then
+      die "'$item' exists for real in both '$old' and '$new'; merge them by hand first (nothing was changed)" \
+          "'$item' existe de verdade em '$old' e também em '$new'; junte à mão antes (nada foi alterado)"
+    fi
+  done
+  for item in $SHAREABLE; do
+    src="$dold/$item"; dst="$dnew/$item"
+    [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ] && rm "$dst"           # new pointed to old
+    if [ -e "$src" ] || [ -L "$src" ]; then
+      if [ -e "$dst" ] || [ -L "$dst" ]; then [ -L "$src" ] && rm "$src"      # new already has its own
+      else mv "$src" "$dst" || die "failed to move $item; check $dold and $dnew" "falhou ao mover $item; confira $dold e $dnew"; fi
+    fi
+    [ -e "$dst" ] || [ -L "$dst" ] || continue
+    for a in $(names); do                                                     # everyone else (and old) → new
+      [ "$a" = "$new" ] && continue
+      target="$(dir_of "$a")/$item"
+      if [ "$a" = "$old" ] || { [ -L "$target" ] && [ "$(readlink "$target")" = "$src" ]; }; then
+        ln -sfn "$dst" "$target"
+      fi
+    done
+  done
+}
+
+# ---------- commands ----------
+show() {
+  local c; c="$(active)"
+  [ -n "$c" ] || die "no accounts yet. Run: ca new NAME" "nenhuma conta cadastrada. Rode: ca new NOME"
+  say "active account: $c → $(dir_of "$c") · $(email_of "$c")" "conta ativa: $c → $(dir_of "$c") · $(email_of "$c")"
+}
+
+cmd_list() {
+  local c n m r b; c="$(active)"; b="$(base)"
+  [ -n "$(names)" ] || die "no accounts yet. Run: ca new NAME" "nenhuma conta cadastrada. Rode: ca new NOME"
+  for n in $(names); do
+    m=" "; [ "$n" = "$c" ] && m="*"
+    r="$n"; [ "$n" = "$b" ] && r="$n (base)"
+    printf '%s %-20s %-34s %s\n' "$m" "$r" "$(tildify "$(dir_of "$n")")" "$(email_of "$n")"
+  done
+}
+
+cmd_use() {
+  [ -n "$(dir_of "$1")" ] || die "account '$1' does not exist. See: ca list   ·   create it: ca new $1" \
+                                 "conta '$1' não existe. Veja: ca list   ·   criar: ca new $1"
+  if [ -n "$(pids)" ]; then
+    say "Claude sessions are open — switching now would leave them on the old account:" \
+        "Há sessões do Claude abertas — trocar agora deixaria processos na conta antiga:"
+    list_sessions
+    say "Close them or run:  ca stop   and try again." "Feche-as ou rode:  ca stop   e tente de novo."
+    exit 1
+  fi
+  echo "$1" > "$ACTIVE"; show
+}
+
+cmd_new() {
+  local name="${1:-}" other dir
+  [ -n "$name" ] || die "usage: ca new NAME [--clean | --share OTHER]" "uso: ca new NOME [--clean | --share OUTRA]"
+  valid_name "$name" || die "invalid name: use lowercase letters, digits, - or _ (e.g. work, client-x); reserved: $RESERVED" \
+                            "nome inválido: use minúsculas, números, - ou _ (ex.: trabalho, cliente-x); reservados: $RESERVED"
+  [ -z "$(dir_of "$name")" ] || die "an account named '$name' already exists" "já existe uma conta chamada '$name'"
+  other="$(base)"                                  # default: linked to the base, if there is one
+  case "${2:-}" in
+    "") ;;
+    --clean) other="" ;;
+    --share)
+      other="${3:-}"
+      [ -n "$(dir_of "$other")" ] || die "account '$other' does not exist (see: ca list)" "conta '$other' não existe (veja: ca list)" ;;
+    *) die "unknown option: $2" "opção desconhecida: $2" ;;
+  esac
+  dir="$HOME/.claude-$name"
+  [ ! -e "$dir" ] || die "$dir already exists; pick another name or delete that folder" "$dir já existe; escolha outro nome ou apague a pasta"
+  mkdir -p "$dir"; chmod 700 "$dir"
+  echo "$name=~/.claude-$name" >> "$ACCOUNTS"
+  if [ -n "$other" ]; then
+    say "Linked to '$other' (plugins, skills, settings and conversations):" "Ligada a '$other' (plugins, skills, configurações e conversas):"
+    share_items "$dir" "$(dir_of "$other")"
+  else
+    say "Isolated account: no plugins, skills or conversations from the others." "Conta isolada: sem plugins, skills nem conversas das outras."
+  fi
+  if [ "$UI" = pt ]; then cat <<EOF
+Conta '$name' criada em $dir (ainda sem login).
+
+Próximos passos:
+  1. ca $name        # troca para ela (feche as sessões abertas antes: ca stop)
+  2. claude          # abre o Claude Code
+  3. /login          # dentro dele, entre com o e-mail certo
+  4. ca              # confira: deve mostrar o e-mail dessa conta
+EOF
+  else cat <<EOF
+Account '$name' created at $dir (not logged in yet).
+
+Next steps:
+  1. ca $name        # switch to it (close open sessions first: ca stop)
+  2. claude          # open Claude Code
+  3. /login          # inside it, sign in with the right email
+  4. ca              # check: it should show this account's email
+EOF
+  fi
+}
+
+cmd_share() {
+  local name="${1:-}" other="${2:-}" p cfg
+  { [ -n "$(dir_of "$name")" ] && [ -n "$(dir_of "$other")" ]; } || \
+    die "usage: ca share NAME OTHER  (both must exist: ca list)" "uso: ca share NOME OUTRA  (as duas precisam existir: ca list)"
+  [ "$name" != "$other" ] || die "pick two different accounts" "escolha duas contas diferentes"
+  for p in $(pids); do
+    cfg="$(pid_cfg "$p")"
+    if [ "$cfg" = "$(dir_of "$name")" ] || [ "$cfg" = "?" ]; then
+      die "a session may be open on '$name' (PID $p); close it first (ca sessions / ca stop)" \
+          "pode haver sessão aberta na conta '$name' (PID $p); feche-a antes (ca sessions / ca stop)"
+    fi
+  done
+  if is_default "$name"; then
+    confirm "'$name' is the DEFAULT account (~/.claude). Its conversations will be merged into '$other' and the folder will use links. Continue?" \
+            "'$name' é a conta PADRÃO (~/.claude). Suas conversas serão mescladas em '$other' e a pasta passará a usar os links. Continuar?" || exit 1
+  fi
+  say "Sharing '$name' with '$other' (what '$name' had is merged, nothing is deleted):" \
+      "Compartilhando '$name' com '$other' (o que '$name' já tinha é mesclado, nada é apagado):"
+  share_items "$(dir_of "$name")" "$(dir_of "$other")" || \
+    die "failed; nothing was deleted, see *$BACKUP_SUFFIX" "falhou; nada foi apagado, veja *$BACKUP_SUFFIX"
+}
+
+cmd_base() {
+  local b new old
+  if [ -z "${1:-}" ]; then
+    b="$(base)"
+    if [ -n "$b" ]; then echo "base: $b → $(dir_of "$b")"
+    else say "no base set. Set one with: ca base NAME" "nenhuma base definida. Defina com: ca base NOME"; fi
+    return
+  fi
+  new="$1"; [ -n "$(dir_of "$new")" ] || die "account '$new' does not exist (see: ca list)" "conta '$new' não existe (veja: ca list)"
+  old="$(base)"
+  if [ -n "$old" ] && [ "$old" != "$new" ]; then
+    if [ -n "$(pids)" ]; then
+      list_sessions
+      die "sessions are open; changing the base touches everything that is shared (ca stop)" \
+          "há sessões abertas; trocar a base mexe em tudo que é compartilhado (ca stop)"
+    fi
+    say "Moving the base from '$old' to '$new' moves plugins, skills, settings and conversations to $(dir_of "$new")." \
+        "Trocar a base de '$old' para '$new' leva plugins, skills, configurações e conversas para $(dir_of "$new")."
+    confirm "Continue?" "Continuar?" || exit 1
+    switch_base "$old" "$new"
+  fi
+  echo "$new" > "$CFG/base"; echo "base: $new"
+}
+
+cmd_remove() {
+  local name="${1:-}" dir o l
+  [ -n "$(dir_of "$name")" ] || die "account '$name' does not exist (see: ca list)" "conta '$name' não existe (veja: ca list)"
+  [ "$name" != "$(active)" ] || die "'$name' is the active account; switch to another one first (ca NAME)" \
+                                    "'$name' é a conta ativa; troque para outra antes (ca NOME)"
+  [ "$name" != "$(base)" ] || die "'$name' is the BASE of the other accounts; set another one first (ca base OTHER)" \
+                                  "'$name' é a BASE das outras contas; defina outra antes (ca base OUTRA)"
+  dir="$(dir_of "$name")"
+  if [ "${2:-}" = "--delete-dir" ]; then
+    is_default "$name" && die "the default account (~/.claude) is never deleted from here" "a conta padrão (~/.claude) não é apagada por aqui"
+    case "$dir" in "$HOME"/.claude-?*) ;; *) die "refusing to delete $dir (not a ~/.claude-* folder)" "recusando apagar $dir (não é uma pasta ~/.claude-*)" ;; esac
+    # another account sharing items FROM this folder would silently break
+    for o in $(names); do
+      [ "$o" = "$name" ] && continue
+      for l in "$(dir_of "$o")"/*; do
+        [ -L "$l" ] || continue
+        case "$(readlink "$l")" in "$dir"/*)
+          die "account '$o' shares items from '$name'; remove or recreate '$o' first" \
+              "a conta '$o' compartilha itens de '$name'; remova '$o' ou recrie-a antes" ;;
+        esac
+      done
+    done
+    confirm "Delete $dir (this account's login and history)?" "Apagar $dir (login e histórico desta conta)?" || exit 1
+    rm -rf -- "$dir"      # links inside it are deleted, never what they point to
+  elif [ -n "${2:-}" ]; then die "unknown option: $2" "opção desconhecida: $2"; fi
+  drop_line "$name"
+  if [ -e "$dir" ]; then say "Account '$name' removed from the list. Folder $dir was kept (delete it with: rm -rf $dir)." \
+                             "Conta '$name' saiu da lista. A pasta $dir foi mantida (apague com: rm -rf $dir)."
+  else say "Account '$name' removed and its folder deleted." "Conta '$name' removida e pasta apagada."; fi
+}
+
+cmd_sessions() {
+  local n
+  say "Open Claude sessions:" "Sessões do Claude abertas:"
+  list_sessions; n=$?
+  [ "$n" -eq 0 ] && say "  none — you can switch accounts." "  nenhuma — pode trocar de conta."
+  return 0
+}
+
+cmd_stop() {
+  local n p rest
+  say "Open Claude sessions:" "Sessões do Claude abertas:"
+  list_sessions; n=$?
+  [ "$n" -eq 0 ] && { say "  none." "  nenhuma."; exit 0; }
+  confirm "Terminate the $n above?" "Encerrar as $n acima?" || exit 1
+  for p in $(pids); do kill -TERM "$p" 2>/dev/null; done
+  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -z "$(pids)" ] && break; sleep 1; done
+  rest="$(pids)"
+  if [ -n "$rest" ]; then say "Forcing: $rest" "Forçando: $rest"; for p in $rest; do kill -KILL "$p" 2>/dev/null; done; sleep 1; fi
+  if [ -z "$(pids)" ]; then say "All terminated." "Todas encerradas."
+  else say "Some are still running:" "Sobrou processo:"; list_sessions; exit 1; fi
+}
+
+cmd_lang() {
+  case "${1:-}" in
+    "") [ "$UI" = pt ] && echo pt-BR || echo en ;;
+    en) echo en > "$CFG/lang"; echo "language: en" ;;
+    pt|pt-BR|pt_BR|pt-br) echo pt-BR > "$CFG/lang"; echo "idioma: pt-BR" ;;
+    *) die "usage: ca lang [en|pt-BR]" "uso: ca lang [en|pt-BR]" ;;
+  esac
+}
+
+cmd_doctor() {
+  local bad=0 real="" found c
+  # shellcheck disable=SC1091
+  [ -r "$CFG/config" ] && . "$CFG/config" && real="${CLAUDE_REAL:-}"
+  check() { # message, test command...
+    local m="$1"; shift
+    if "$@"; then echo "  ok    $m"; else echo "  FAIL  $m"; bad=$((bad+1)); fi
+  }
+  logged_in() { [ -n "$c" ] && [ -r "$(json_of "$c")" ]; }
+  has_dir()   { [ -n "$c" ] && [ -d "$(dir_of "$c")" ]; }
+  say "claude-accounts $VERSION · $(uname -s)" "claude-accounts $VERSION · $(uname -s)"
+  check "$(t "real claude binary: ${real:-(not set)}" "binário real do claude: ${real:-(não definido)}")" [ -x "$real" ]
+  found="$(command -v claude 2>/dev/null)"
+  check "$(t "'claude' in PATH is the wrapper: ${found:-(none)}" "'claude' no PATH é o wrapper: ${found:-(nenhum)}")" \
+    [ "$found" = "$(cd "$(dirname "$0")" && pwd)/claude" ]
+  c="$(active)"
+  check "$(t "active account folder: ${c:-(none)} → $(dir_of "$c")" "pasta da conta ativa: ${c:-(nenhuma)} → $(dir_of "$c")")" has_dir
+  check "$(t "active account login: $(email_of "$c")" "login da conta ativa: $(email_of "$c")")" logged_in
+  [ "$bad" -eq 0 ] || say "Fix: re-run install.sh and open a new terminal (see docs/how-it-works.md)." \
+                          "Correção: rode install.sh de novo e abra um terminal novo (veja docs/pt-BR/como-funciona.md)."
+  [ "$bad" -eq 0 ]
+}
+
+cmd_help() {
+  if [ "$UI" = pt ]; then cat <<'EOF'
+claude-accounts (ca) — várias contas do Claude Code na mesma máquina
+
+  ca                          conta ativa e e-mail
+  ca list                     todas as contas (* = ativa)
+  ca NOME | ca use NOME       troca para a conta NOME (recusa se houver sessão aberta)
+  ca new NOME [--clean | --share OUTRA]
+                              cria conta; por padrão já nasce ligada à base
+  ca base [NOME]              mostra / troca a base (conta que guarda plugins, skills e config)
+  ca share NOME OUTRA         liga conversas/plugins/config de NOME aos de OUTRA
+  ca remove NOME [--delete-dir]
+                              tira a conta da lista (a pasta só é apagada com --delete-dir)
+  ca sessions                 sessões do Claude abertas
+  ca stop                     encerra todas as sessões (pede confirmação)
+  ca lang [en|pt-BR]          idioma das mensagens
+  ca doctor                   confere a instalação
+  ca version | ca help
+
+  claude                      abre o Claude Code na conta ativa
+  claude-auto                 igual, mas continua a conversa do diretório se houver
+EOF
+  else cat <<'EOF'
+claude-accounts (ca) — several Claude Code accounts on one machine
+
+  ca                          active account and email
+  ca list                     all accounts (* = active)
+  ca NAME | ca use NAME       switch to account NAME (refuses while sessions are open)
+  ca new NAME [--clean | --share OTHER]
+                              create an account; linked to the base by default
+  ca base [NAME]              show / move the base (account holding plugins, skills, config)
+  ca share NAME OTHER         link NAME's conversations/plugins/config to OTHER's
+  ca remove NAME [--delete-dir]
+                              drop the account from the list (folder deleted only with --delete-dir)
+  ca sessions                 open Claude sessions
+  ca stop                     terminate all sessions (asks first)
+  ca lang [en|pt-BR]          UI language
+  ca doctor                   check the installation
+  ca version | ca help
+
+  claude                      open Claude Code on the active account
+  claude-auto                 same, but continue this directory's conversation if any
+EOF
+  fi
+}
+
+case "${1:-}" in
+  "")                 show ;;
+  list|ls)            cmd_list ;;
+  use)                [ -n "${2:-}" ] || die "usage: ca use NAME" "uso: ca use NOME"; cmd_use "$2" ;;
+  new)                shift; cmd_new "$@" ;;
+  share)              shift; cmd_share "$@" ;;
+  base)               shift; cmd_base "$@" ;;
+  remove|rm)          shift; cmd_remove "$@" ;;
+  sessions)           cmd_sessions ;;
+  stop)               cmd_stop ;;
+  lang)               cmd_lang "${2:-}" ;;
+  doctor)             cmd_doctor ;;
+  version|--version|-v) echo "claude-accounts $VERSION" ;;
+  help|--help|-h)     cmd_help ;;
+  _dir)               # (internal) folder of the active account; empty = default account
+    c="$(active)"; [ -n "$c" ] && ! is_default "$c" && dir_of "$c"
+    exit 0 ;;
+  -*)                 die "unknown option: $1 (see: ca help)" "opção desconhecida: $1 (veja: ca help)" ;;
+  *)                  cmd_use "$1" ;;
+esac

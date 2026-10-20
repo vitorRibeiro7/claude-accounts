@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# claude-auto — open Claude on the active account and CONTINUE this directory's conversation
+# if there is one; if the directory never had a session, start a new one.
+#
+# Why: `claude --continue` is per directory and ABORTS when the directory never had a session;
+# without it, reopening a terminal in an old directory starts empty. No flag does both, so this
+# script decides. Handy for tools that always launch Claude with the same command (IDEs,
+# Maestri, terminal presets…).
+HERE="$(cd "$(dirname "$0")" && pwd)"
+if [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
+  d="$("$HERE/claude-accounts" _dir)"     # empty = default account (~/.claude)
+  [ -n "$d" ] && export CLAUDE_CONFIG_DIR="$d"
+fi
+
+# Claude stores conversations in <account dir>/projects/<path with / and . turned into ->
+project="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/${PWD//[\/.]/-}"
+
+if compgen -G "$project/*.jsonl" > /dev/null 2>&1; then
+  exec "$HERE/claude" --continue "$@"
+fi
+exec "$HERE/claude" "$@"
