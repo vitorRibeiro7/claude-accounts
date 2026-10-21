@@ -307,12 +307,16 @@ cmd_here() {
   esac
 }
 
-# Claude Code status line: "● work · you@company.com". Runs INSIDE Claude, so the account is
-# whatever CLAUDE_CONFIG_DIR the session was started with.
+# Claude Code status line: "● work · you@company.com". Inside Claude the account is whatever
+# CLAUDE_CONFIG_DIR the session was started with.
 cmd_statusline() {
   [ "${1:-}" = "--install" ] && { statusline_install; return; }
   [ -t 0 ] || cat > /dev/null                      # Claude sends session JSON on stdin; not needed
-  local n; n="$(name_of_dir "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
+  local n
+  # Inside Claude (CLAUDECODE=1) the session's own folder decides; an unset CLAUDE_CONFIG_DIR
+  # there means the default account. In a plain terminal, show the account in effect here.
+  if [ -n "${CLAUDE_CONFIG_DIR:-}" ] || [ -n "${CLAUDECODE:-}" ]; then n="$(name_of_dir "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
+  else n="$(current)"; fi
   printf '\033[1;36m●\033[0m \033[1m%s\033[0m \033[2m· %s\033[0m\n' "$n" "$(email_of "$n")"
 }
 

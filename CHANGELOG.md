@@ -8,6 +8,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - `ca statusline --install` no longer needs `jq` when `settings.json` already has settings: it
   inserts the `statusLine` member itself and keeps a backup (`settings.json.before-statusline`).
+- `ca statusline` run in a plain terminal shows the account in effect for that folder instead of
+  the default account (inside Claude it still shows the session's account).
 
 ## [1.2.0] - 2026-10-20
 
