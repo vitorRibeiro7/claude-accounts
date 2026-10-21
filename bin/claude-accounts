@@ -328,11 +328,27 @@ statusline_install() {
   # writing with > (never mv) keeps a shared, symlinked settings.json shared
   if [ ! -s "$f" ] || [ "$(tr -d '[:space:]' < "$f")" = "{}" ]; then
     printf '{\n  %s\n}\n' "$entry" > "$f"
-  elif command -v jq >/dev/null 2>&1; then
-    jq --arg c "$cmd" '.statusLine = {type: "command", command: $c}' "$f" > "$f.tmp" && cat "$f.tmp" > "$f"
+  elif [ "$(tr -d '[:space:]' < "$f" | cut -c1)" = "{" ]; then
+    cp "$f" "$f.before-statusline"
+    if command -v jq >/dev/null 2>&1 && jq --arg c "$cmd" '.statusLine = {type: "command", command: $c}' "$f" > "$f.tmp" 2>/dev/null; then
+      :
+    else
+      # No jq needed: settings.json is one JSON object, so a member added right after its
+      # opening "{" (followed by a comma, as the object isn't empty) keeps it valid.
+      awk -v e="$entry" '
+        !done && (i = index($0, "{")) {
+          print substr($0, 1, i); print "  " e ","
+          rest = substr($0, i + 1); if (rest ~ /[^[:space:]]/) print rest
+          done = 1; next
+        }
+        { print }' "$f" > "$f.tmp"
+    fi
+    [ -s "$f.tmp" ] && cat "$f.tmp" > "$f"
     rm -f -- "$f.tmp"
+    say "Backup of the previous file: $(tildify "$f.before-statusline")" "Backup do arquivo anterior: $(tildify "$f.before-statusline")"
   else
-    say "Install jq, or add this to $(tildify "$f"):" "Instale o jq, ou adicione isto em $(tildify "$f"):"
+    say "$(tildify "$f") doesn't look like a JSON object; add this to it by hand:" \
+        "$(tildify "$f") não parece um objeto JSON; adicione isto à mão:"
     echo "  $entry"; exit 1
   fi
   say "Status line added to $(tildify "$f"). Restart Claude Code to see it." \

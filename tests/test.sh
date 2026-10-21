@@ -238,6 +238,20 @@ expect "--install writes the statusLine" "1" "$(grep -c '"command": ".*claude-ac
 refuses "--install twice is refused" bash -c "cd '$P' && '$CA' statusline --install"
 echo '{}' > "$SG"; (cd "$P" && "$CA" statusline --install >/dev/null)
 expect "--install on an empty object" "1" "$(grep -c statusLine "$SG")"
+nojq="$T/nojq"; mkdir -p "$nojq"; printf '#!/bin/sh\nexit 1\n' > "$nojq/jq"; chmod +x "$nojq/jq"   # jq that fails → no-jq path
+for json in '{\n  "model": "opus",\n  "env": { "A": "1" }\n}' '{"model":"opus","env":{"A":"1"}}'; do
+  printf '%b\n' "$json" > "$SG"
+  (cd "$P" && PATH="$nojq:$PATH" "$CA" statusline --install >/dev/null)
+  expect "--install without jq adds the statusLine" "1" "$(grep -c '"statusLine"' "$SG")"
+  expect "...keeps the other settings" "1" "$(grep -c '"model": *"opus"' "$SG")"
+  expect "...keeps a backup" "yes" "$(yes_if [ -f "$SG.before-statusline" ])"
+  if command -v python3 >/dev/null 2>&1; then
+    expect "...and the JSON stays valid" "ok" "$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("ok" if d["statusLine"]["type"]=="command" and d["model"]=="opus" else "bad")' "$SG" 2>&1)"
+  fi
+done
+echo '[1]' > "$SG"
+refuses "--install refuses a file that isn't a JSON object" bash -c "cd '$P' && '$CA' statusline --install"
+rm -f -- "$SG" "$SG.before-statusline"
 echo '{}' > "$HOME/.claude-alpha/settings.json"
 rm -f -- "$SG"; ln -s "$HOME/.claude-alpha/settings.json" "$SG"
 (cd "$P" && "$CA" statusline --install >/dev/null)

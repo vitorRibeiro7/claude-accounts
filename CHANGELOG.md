@@ -3,6 +3,12 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- `ca statusline --install` no longer needs `jq` when `settings.json` already has settings: it
+  inserts the `statusLine` member itself and keeps a backup (`settings.json.before-statusline`).
+
 ## [1.2.0] - 2026-10-20
 
 ### Fixed
