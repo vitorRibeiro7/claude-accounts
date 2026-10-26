@@ -39,6 +39,7 @@ Claude Code keeps one login per config folder. If you have a personal subscripti
 - ⚡ **One command to switch** — `ca work`, then `claude`. That's it.
 - 📁 **Per-project accounts** — `ca here work` once, and `claude` opens on the right account in that repo. Personal and work sessions side by side.
 - 👀 **Always know where you are** — account and email in Claude Code's status line and in your shell prompt.
+- 📊 **Every account's limits at a glance** — `ca usage` shows the 5-hour and weekly use of all your accounts side by side, with reset times.
 - 🔐 **Logins stay separate** — each account keeps its own credentials; nothing is copied or shared.
 - 🧩 **Shared setup** — install a plugin or skill once, have it in every account (optional, per account).
 - 💬 **Resume across accounts** — shared conversation history, so `/resume` works no matter which account you're on.
@@ -103,6 +104,18 @@ ca statusline --install   # Claude Code's bottom bar: ● work · you@company.co
 
 > **Tip:** if your browser is already signed in to another Anthropic account, `/login` may silently authorize that one. Use a private window.
 
+## See every account's limits
+
+```console
+$ ca usage
+  ACCOUNT              PLAN     5H  RESETS IN   7D  RESETS IN  MODELS
+* personal             max      3%  3h 18m     22%  14h 8m     Fable 34%
+  work                 pro     81%  42m        64%  2d 14h
+  client-x             team    96%  18m        92%  7h 8m
+```
+
+Every logged-in account is asked at once, through Claude Code itself, so it takes about as long as the slowest one (a couple of seconds). Values close to the limit turn yellow, then red. `ca usage work` shows just that account. It only reports: it never switches accounts for you.
+
 ## Commands
 
 | Command | What it does |
@@ -117,6 +130,7 @@ ca statusline --install   # Claude Code's bottom bar: ● work · you@company.co
 | `ca remove NAME [--delete-dir]` | drop it from the list (the folder is only deleted with `--delete-dir`) |
 | `ca sessions` | list open Claude sessions and their accounts |
 | `ca stop` | terminate all sessions (asks first) |
+| `ca usage [NAME…]` | plan usage of every account: 5-hour and weekly limits, reset times, per-model caps |
 | `ca statusline [--install]` | account and email in Claude Code's status line |
 | `ca prompt` | account name for your shell prompt |
 | `ca lang [en\|pt-BR]` | UI language |

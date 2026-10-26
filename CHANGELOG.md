@@ -3,6 +3,15 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `ca usage [NAME...]`: plan usage of every logged-in account side by side (plan, 5-hour and weekly
+  use, time to reset, per-model limits), asked in parallel through Claude Code's stream-json mode.
+  Values close to the limit are colored in a terminal. Accounts without a login are not asked; a lost
+  login, an API key account or an empty answer is named as such (via `claude auth status --json`).
+- Tab completion for `ca usage` and its account names.
+
 ## [1.3.0] - 2026-10-26
 
 ### Changed

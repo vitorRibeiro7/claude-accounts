@@ -20,10 +20,11 @@ ACCOUNTS="$CFG/accounts"
 ACTIVE="$CFG/active"
 SESSIONS="$CFG/sessions"
 PROC_NAME="${CLAUDE_ACCOUNTS_PROC_NAME:-claude}"   # only the tests change this
+USAGE_TIMEOUT="${CLAUDE_ACCOUNTS_USAGE_TIMEOUT:-30}" # seconds `ca usage` waits for an account
 # Items a new account can share with another one (conversations, settings, plugins…).
 SHAREABLE="projects settings.json plugins skills file-history history.jsonl"
 BACKUP_SUFFIX=".before-share"
-RESERVED="list ls use new base share remove rm here sessions stop lang doctor statusline prompt help version"
+RESERVED="list ls use new base share remove rm here sessions stop usage lang doctor statusline prompt help version"
 PIN_FILE=".claude-account"
 
 mkdir -p "$CFG"; touch "$ACCOUNTS"
@@ -64,8 +65,9 @@ tildify() { case "$1" in "$HOME"*) echo "~${1#"$HOME"}" ;; *) echo "$1" ;; esac;
 is_default() { [ "$(dir_of "$1")" = "$HOME/.claude" ]; }
 json_of() { if is_default "$1"; then echo "$HOME/.claude.json"; else echo "$(dir_of "$1")/.claude.json"; fi; }
 
-# Email of the logged-in account. jq when available, otherwise a sed fallback (no python needed).
-email_of() {
+# Email of the logged-in account, empty when it is not logged in. jq when available, otherwise a
+# sed fallback (no python needed).
+email_raw() {
   local f e=""; f="$(json_of "$1")"
   if [ -r "$f" ]; then
     if command -v jq >/dev/null 2>&1; then
@@ -74,8 +76,9 @@ email_of() {
       e="$(tr -d '\n' < "$f" | sed -n 's/.*"oauthAccount"[^}]*"emailAddress"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
     fi
   fi
-  if [ -n "$e" ]; then echo "$e"; else say "(not logged in)" "(sem login)"; fi
+  printf '%s' "$e"
 }
+email_of() { local e; e="$(email_raw "$1")"; if [ -n "$e" ]; then echo "$e"; else say "(not logged in)" "(sem login)"; fi; }
 
 names() { sed -n 's/^\([^#=][^=]*\)=.*/\1/p' "$ACCOUNTS"; }
 
@@ -262,22 +265,33 @@ show() {
   say "account here: $c (from $from) → $(dir_of "$c") · $(email_of "$c")" "conta aqui: $c (via $from) → $(dir_of "$c") · $(email_of "$c")"
 }
 
+# Marks shown by ca list and ca usage: * = the global account, > = the account in effect here when
+# a pin or CLAUDE_ACCOUNT picks it. Sets MARK_GLOBAL, MARK_HERE and MARK_FROM (where > comes from).
+marks_init() {
+  MARK_GLOBAL="$(active)"; MARK_HERE=""; MARK_FROM=""
+  stale_active && MARK_GLOBAL=""                   # then no account gets the * mark
+  ( resolve ) >/dev/null 2>&1 || return 0
+  resolve; [ "$RES_SRC" != global ] || return 0
+  MARK_HERE="$RES_NAME"
+  if [ "$RES_SRC" = env ]; then MARK_FROM="\$CLAUDE_ACCOUNT"; else MARK_FROM="$(tildify "$RES_SRC")"; fi
+}
+mark_of() { if [ "$1" = "$MARK_HERE" ]; then echo ">"; elif [ "$1" = "$MARK_GLOBAL" ]; then echo "*"; else echo " "; fi; }
+marks_legend() {
+  [ -z "$MARK_HERE" ] || say "> = used here (from $MARK_FROM) · * = global" "> = usada aqui (via $MARK_FROM) · * = global"
+  stale_active || return 0
+  say "Warning: the active account '$(active_setting)' is not in the list; pick one with: ca NAME" \
+      "Atenção: a conta ativa '$(active_setting)' não está na lista; escolha uma com: ca NOME"
+}
+
 cmd_list() {
-  local c n m r b here="" stale=""; c="$(active)"; b="$(base)"
+  local n r b; b="$(base)"
   [ -n "$(names)" ] || die "no accounts yet. Run: ca new NAME" "nenhuma conta cadastrada. Rode: ca new NOME"
-  stale_active && { stale="$(active_setting)"; c=""; }        # then no account gets the * mark
-  ( resolve ) >/dev/null 2>&1 && resolve && [ "$RES_SRC" != global ] && here="$RES_NAME"
+  marks_init
   for n in $(names); do
-    m=" "; [ "$n" = "$c" ] && m="*"; [ "$n" = "$here" ] && m=">"
     r="$n"; [ "$n" = "$b" ] && r="$n (base)"
-    printf '%s %-20s %-34s %s\n' "$m" "$r" "$(tildify "$(dir_of "$n")")" "$(email_of "$n")"
+    printf '%s %-20s %-34s %s\n' "$(mark_of "$n")" "$r" "$(tildify "$(dir_of "$n")")" "$(email_of "$n")"
   done
-  if [ -n "$here" ]; then
-    if [ "$RES_SRC" = env ]; then r="\$CLAUDE_ACCOUNT"; else r="$(tildify "$RES_SRC")"; fi
-    say "> = used here (from $r) · * = global" "> = usada aqui (via $r) · * = global"
-  fi
-  [ -z "$stale" ] || say "Warning: the active account '$stale' is not in the list; pick one with: ca NAME" \
-                         "Atenção: a conta ativa '$stale' não está na lista; escolha uma com: ca NOME"
+  marks_legend
 }
 
 # The account is picked when Claude starts, so switching never touches an open session: it keeps
@@ -537,6 +551,152 @@ cmd_stop() {
   else say "Some are still running:" "Sobrou processo:"; list_sessions; exit 1; fi
 }
 
+# ---------- usage ----------
+# `ca usage`: plan usage of every logged-in account, side by side. Each account is asked by the
+# real binary with its own folder, through the control request Claude Code's stream-json mode
+# answers for usage meters (the one docs/maestri.md uses). Informational only: nothing switches.
+USAGE_REQ='{"type":"control_request","request_id":"ca-usage","request":{"subtype":"get_usage","skip_behaviors":true}}'
+
+# Reads one account's output and prints its table row. Plain POSIX awk (BSD awk, mawk, gawk): no
+# JSON library and no date(1) parsing. Input vars: mark, name, now (epoch), color (0/1) and the
+# localized words nowword, errword, nolimits, nodata.
+# shellcheck disable=SC2016  # $0 and friends belong to awk
+USAGE_AWK='
+function obj(s, k) { return match(s, "\"" k "\":[{][^{}]*[}]") ? substr(s, RSTART, RLENGTH) : "" }
+function num(s, k,   v) {
+  if (!match(s, "\"" k "\":-?[0-9][0-9.]*")) return ""
+  v = substr(s, RSTART, RLENGTH); sub(/^[^:]*:/, "", v); return v
+}
+function str(s, k,   v) {
+  if (!match(s, "\"" k "\":\"[^\"]*\"")) return ""
+  v = substr(s, RSTART, RLENGTH); sub(/^[^:]*:"/, "", v); sub(/"$/, "", v); return v
+}
+# ISO 8601 such as 2026-10-27T10:00:00.038757+00:00 (Z or +-hh:mm) to seconds since 1970
+function epoch(s,   y, m, d, rest, off, era, yoe, doy) {
+  y = substr(s, 1, 4) + 0; m = substr(s, 6, 2) + 0; d = substr(s, 9, 2) + 0
+  rest = substr(s, 20); sub(/^[.][0-9]*/, "", rest); off = 0
+  if (rest ~ /^[+-][0-9][0-9]:[0-9][0-9]/) {
+    off = substr(rest, 2, 2) * 3600 + substr(rest, 5, 2) * 60
+    if (substr(rest, 1, 1) == "-") off = -off
+  }
+  if (m <= 2) y--
+  era = int(y / 400); yoe = y - era * 400
+  doy = int((153 * (m > 2 ? m - 3 : m + 9) + 2) / 5) + d - 1
+  return (era * 146097 + yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy - 719468) * 86400 \
+         + substr(s, 12, 2) * 3600 + substr(s, 15, 2) * 60 + substr(s, 18, 2) - off
+}
+function left(s,   t) {
+  if (s == "") return "-"
+  t = epoch(s) - now
+  if (t <= 0) return nowword
+  if (t >= 86400) return int(t / 86400) "d " int((t % 86400) / 3600) "h"
+  if (t >= 3600) return int(t / 3600) "h " int((t % 3600) / 60) "m"
+  return int(t / 60) "m"
+}
+function pct(v) { return v == "" ? "-" : int(v + 0.5) "%" }
+function paint(cell, v) {
+  if (!color || v == "") return cell
+  if (v + 0 >= 90) return "\033[1;31m" cell "\033[0m"
+  if (v + 0 >= 70) return "\033[33m" cell "\033[0m"
+  return cell
+}
+index($0, "\"control_response\"") {
+  err = str($0, "error"); plan = str($0, "subscription_type"); if (plan == "") plan = "-"
+  if (err != "") { printf "%s %-20s (%s: %s)\n", mark, name, errword, err; exit }
+  if (index($0, "\"rate_limits_available\":false")) { printf "%s %-20s %-6s %s\n", mark, name, plan, nolimits; exit }
+  f = obj($0, "five_hour"); w = obj($0, "seven_day"); u5 = num(f, "utilization"); u7 = num(w, "utilization")
+  models = ""; i = index($0, "\"model_scoped\":[")
+  if (i) {
+    arr = substr($0, i + 16); j = index(arr, "]"); if (j) arr = substr(arr, 1, j - 1)
+    while (match(arr, "[{][^{}]*[}]")) {
+      o = substr(arr, RSTART, RLENGTH); arr = substr(arr, RSTART + RLENGTH)
+      models = models (models == "" ? "" : " · ") str(o, "display_name") " " pct(num(o, "utilization"))
+    }
+  }
+  if (f == "" && w == "" && models == "") { printf "%s %-20s %-6s %s\n", mark, name, plan, nodata; exit }
+  line = sprintf("%s %-20s %-6s %s  %-9s %s  %-9s  %s", mark, name, plan, paint(sprintf("%4s", pct(u5)), u5), left(str(f, "resets_at")),
+                 paint(sprintf("%4s", pct(u7)), u7), left(str(w, "resets_at")), models)
+  sub(/ +$/, "", line); print line; exit
+}'
+
+# NAME ARGS... — the real claude on account NAME. Runs in the background; exec keeps the PID, so the
+# timeout can stop the real process. Bypasses the wrapper (no session registered).
+ask_claude() {
+  local n="$1"; shift
+  if is_default "$n"; then exec env -u CLAUDE_CONFIG_DIR "$USAGE_REAL" "$@"
+  else exec env CLAUDE_CONFIG_DIR="$(dir_of "$n")" "$USAGE_REAL" "$@"; fi
+}
+
+cmd_usage() {
+  local list="" n p pids="" dog row color=0 now asked=0
+  for n in "$@"; do
+    case "$n" in -*) die "unknown option: $n (usage: ca usage [NAME...])" "opção desconhecida: $n (uso: ca usage [NOME...])" ;; esac
+    [ -n "$(dir_of "$n")" ] || die "account '$n' does not exist (see: ca list)" "conta '$n' não existe (veja: ca list)"
+    case " $list " in *" $n "*) ;; *) list="$list $n" ;; esac
+  done
+  [ -n "$list" ] || list="$(names)"
+  [ -n "$list" ] || die "no accounts yet. Run: ca new NAME" "nenhuma conta cadastrada. Rode: ca new NOME"
+  USAGE_REAL=""
+  # shellcheck disable=SC1091
+  [ -r "$CFG/config" ] && . "$CFG/config" && USAGE_REAL="${CLAUDE_REAL:-}"
+  [ -x "$USAGE_REAL" ] || die "real claude binary not found (${USAGE_REAL:-not set}); re-run install.sh" \
+                              "binário real do claude não encontrado (${USAGE_REAL:-não definido}); rode install.sh de novo"
+  # global, not local: the EXIT trap runs after this function has returned
+  USAGE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/ca-usage.XXXXXX")" || die "could not create a temporary folder" "não deu para criar uma pasta temporária"
+  trap 'rm -rf "$USAGE_TMP"' EXIT
+  printf '%s\n' "$USAGE_REQ" > "$USAGE_TMP/request"
+  # Ask every logged-in account at once, for its usage and its login state (`auth status` tells a
+  # lost login or an API key apart from an empty answer). An account without a login is not asked:
+  # there is nothing to report, and Claude would create files in its folder.
+  for n in $list; do
+    [ -n "$(email_raw "$n")" ] || continue
+    ask_claude "$n" -p --input-format stream-json --output-format stream-json --verbose --no-session-persistence \
+      < "$USAGE_TMP/request" > "$USAGE_TMP/$n.usage" 2>/dev/null &
+    pids="$pids $!"
+    ask_claude "$n" auth status --json < /dev/null > "$USAGE_TMP/$n.auth" 2>/dev/null &
+    pids="$pids $!"; asked=$((asked + 1))
+  done
+  if [ -n "$pids" ]; then
+    if [ -t 2 ]; then
+      if [ "$asked" -eq 1 ]; then printf '%s' "$(t "asking 1 account…" "consultando 1 conta…")" >&2
+      else printf '%s' "$(t "asking $asked accounts…" "consultando $asked contas…")" >&2; fi
+    fi
+    # watchdog: whatever is still running after USAGE_TIMEOUT seconds is stopped
+    (
+      trap 'kill "$s" 2>/dev/null; exit 0' TERM
+      sleep "$USAGE_TIMEOUT" & s=$!; wait "$s"
+      for p in $pids; do kill "$p" 2>/dev/null; done
+    ) >/dev/null 2>&1 &
+    dog=$!
+    USAGE_PIDS="$pids $dog"; trap usage_abort INT TERM   # background jobs ignore Ctrl-C: stop them here
+    for p in $pids; do wait "$p" 2>/dev/null; done
+    trap - INT TERM
+    kill "$dog" 2>/dev/null; wait "$dog" 2>/dev/null
+    [ -t 2 ] && printf '\r\033[K' >&2
+  fi
+  [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && color=1
+  now="${CLAUDE_ACCOUNTS_NOW:-$(date +%s)}"         # only the tests set CLAUDE_ACCOUNTS_NOW
+  marks_init
+  printf '  %-20s %-6s %4s  %-9s %4s  %-9s  %s\n' "$(t ACCOUNT CONTA)" "$(t PLAN PLANO)" 5H "$(t 'RESETS IN' 'RENOVA EM')" 7D "$(t 'RESETS IN' 'RENOVA EM')" "$(t MODELS MODELOS)"
+  for n in $list; do
+    if [ -z "$(email_raw "$n")" ]; then usage_note "$n" '(not logged in)' '(sem login)'; continue; fi
+    if grep -q '"loggedIn":[[:space:]]*false' "$USAGE_TMP/$n.auth" 2>/dev/null; then
+      usage_note "$n" '(logged out: open claude on it and run /login)' '(deslogada: abra o claude nela e rode /login)'; continue
+    fi
+    if grep -q '"authMethod":[[:space:]]*"api_key"' "$USAGE_TMP/$n.auth" 2>/dev/null; then
+      usage_note "$n" '(API key: billed per use, no plan limits)' '(API key: cobrança por uso, sem limites de plano)'; continue
+    fi
+    row="$(awk -v mark="$(mark_of "$n")" -v name="$n" -v now="$now" -v color="$color" -v nowword="$(t now agora)" \
+               -v errword="$(t error erro)" -v nolimits="$(t '(no plan limits reported)' '(sem limites de plano informados)')" \
+               -v nodata="$(t '(no usage data returned)' '(sem dados de uso)')" "$USAGE_AWK" "$USAGE_TMP/$n.usage" 2>/dev/null)"
+    if [ -n "$row" ]; then printf '%s\n' "$row"
+    else usage_note "$n" "(no answer from Claude Code in ${USAGE_TIMEOUT}s)" "(sem resposta do Claude Code em ${USAGE_TIMEOUT}s)"; fi
+  done
+  marks_legend
+}
+usage_note() { printf '%s %-20s %s\n' "$(mark_of "$1")" "$1" "$(t "$2" "$3")"; }   # NAME EN PT — a row without numbers
+usage_abort() { local p; for p in $USAGE_PIDS; do kill "$p" 2>/dev/null; done; [ -t 2 ] && printf '\r\033[K' >&2; exit 130; }
+
 cmd_lang() {
   case "${1:-}" in
     "") [ "$UI" = pt ] && echo pt-BR || echo en ;;
@@ -584,6 +744,7 @@ claude-accounts (ca) — várias contas do Claude Code na mesma máquina
   ca remove NOME [--delete-dir]
                               tira a conta da lista (a pasta só é apagada com --delete-dir)
   ca sessions                 sessões do Claude abertas
+  ca usage [NOME...]          uso do plano de cada conta (5h, semana, por modelo)
   ca stop                     encerra todas as sessões (pede confirmação)
   ca lang [en|pt-BR]          idioma das mensagens
   ca statusline [--install]   conta e e-mail na status line do Claude Code
@@ -609,6 +770,7 @@ claude-accounts (ca) — several Claude Code accounts on one machine
   ca remove NAME [--delete-dir]
                               drop the account from the list (folder deleted only with --delete-dir)
   ca sessions                 open Claude sessions
+  ca usage [NAME...]          plan usage of every account (5h, week, per model)
   ca stop                     terminate all sessions (asks first)
   ca lang [en|pt-BR]          UI language
   ca statusline [--install]   account and email in Claude Code's status line
@@ -633,6 +795,7 @@ case "${1:-}" in
   remove|rm)          shift; cmd_remove "$@" ;;
   sessions)           cmd_sessions ;;
   stop)               cmd_stop ;;
+  usage)              shift; cmd_usage "$@" ;;
   here)               cmd_here "${2:-}" ;;
   statusline)         cmd_statusline "${2:-}" ;;
   prompt)             cmd_prompt ;;

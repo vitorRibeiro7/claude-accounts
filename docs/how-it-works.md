@@ -63,6 +63,12 @@ The process name must stay `claude`: the installer records the `claude` link, no
 
 When the last conversation became a **background session**, `--continue` refuses to open it. `claude-auto` checks `claude agents --json` first and, if that conversation is a background session, reopens the same session with `claude attach <id>`. If `--continue` still refuses at startup, it looks for the session in your other accounts (conversations are shared through `projects/`) and attaches with the account that owns it. It never starts a new session on its own: if nothing works, it prints the `claude --resume <id>` to use and stops.
 
+## `ca usage`
+
+`ca usage` asks each logged-in account for its plan usage through Claude Code's own stream-json mode: it runs the real binary (not the wrapper, so nothing is registered as a session) with the account's folder, sends the `get_usage` control request that usage meters use, and reads the answer. It also runs `claude auth status --json`, so an account whose login was lost (its email is still in `.claude.json`) or that uses an API key is named as such instead of showing empty numbers. All accounts are asked in parallel; one that does not answer within 30 seconds (`CLAUDE_ACCOUNTS_USAGE_TIMEOUT`) is shown as such. Accounts without a login are not asked, because there is nothing to report and Claude would create files in their folders. Nothing is sent to a model, so it costs no usage.
+
+The request is not a documented Claude Code API. If a version stops answering it, the row shows Claude Code's error instead of numbers.
+
 ## The base and sharing
 
 The **base** (`~/.config/claude-accounts/base`) is just the name of the account that holds the real config. `ca new` links the new account to it by default; `--clean` turns that off; `--share OTHER` links to another account instead. `ca base OTHER` really moves the base: it moves the shared items to the new base and relinks everyone else.

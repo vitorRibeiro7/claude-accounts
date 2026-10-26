@@ -22,7 +22,7 @@ To move everything to another account at once: close the sessions (`ca stop`), `
 
 ## 2. Usage meters → one provider per account, calling the real binary
 
-Maestri shows each account's plan usage. It reads it from JSON files, one per account:
+Maestri shows each account's plan usage. (In a terminal, `ca usage` shows the same numbers for every account at once.) It reads it from JSON files, one per account:
 
 ```
 C:\Users\<you>\.maestri\usage\providers\<id>.json

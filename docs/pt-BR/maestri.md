@@ -22,7 +22,7 @@ Para trocar tudo de conta de uma vez: feche as sessões (`ca stop`), `ca NOME`, 
 
 ## 2. Anéis de uso → um provider por conta, chamando o binário real
 
-O Maestri mostra o consumo do plano de cada conta. Ele guarda isso em arquivos JSON (um por conta):
+O Maestri mostra o consumo do plano de cada conta. (No terminal, `ca usage` mostra os mesmos números de todas as contas de uma vez.) Ele guarda isso em arquivos JSON (um por conta):
 
 ```
 C:\Users\<você>\.maestri\usage\providers\<id>.json
