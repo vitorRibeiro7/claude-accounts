@@ -4,7 +4,7 @@
 # shellcheck disable=SC2015,SC2016,SC2088  # A && ok || bad is intended; literal ~ and $ are expected output
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-T="$(mktemp -d)"; trap 'rm -rf "$T"; for s in ${SLEEPER:-} ${S2:-}; do kill "$s" 2>/dev/null; done' EXIT
+T="$(mktemp -d)"; trap 'rm -rf "$T"; [ -n "${SLEEPER:-}" ] && kill "$SLEEPER" 2>/dev/null; [ -n "${S2:-}" ] && kill "$S2" 2>/dev/null' EXIT
 export HOME="$T/home" CLAUDE_ACCOUNTS_DIR="$T/cfg" CLAUDE_ACCOUNTS_PROC_NAME="claude-ghost-$$"
 unset CLAUDE_CONFIG_DIR CLAUDE_ACCOUNTS_LANG CLAUDE_ACCOUNTS_BIN
 mkdir -p "$HOME" "$CLAUDE_ACCOUNTS_DIR"
