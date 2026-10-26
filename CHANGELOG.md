@@ -18,6 +18,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - `claude-auto` names the conversation folder like Claude Code does (every character that is not a
   letter or digit becomes `-`), so a directory with `_`, spaces or other symbols continues its last
   conversation instead of starting a new one.
+- `claude-auto` handles account folders with spaces in the path when it looks for the background
+  session in the other accounts.
 - `ca statusline --install` no longer needs `jq` when `settings.json` already has settings: it
   inserts the `statusLine` member itself and keeps a backup (`settings.json.before-statusline`).
 - `ca statusline` run in a plain terminal shows the account in effect for that folder instead of

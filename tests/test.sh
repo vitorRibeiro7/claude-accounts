@@ -200,6 +200,12 @@ rm -f -- "$HOME/.claude-gamma/fake-agents.json"
 refuses "...and never starts a new session on its own" bash -c "cd '$T/repo' && FAKE_FAIL_CONTINUE=1 '$ROOT/bin/claude-auto' 2>/dev/null | grep -q 'args=\$'"
 expect "...it tells you how to resume instead" "1" "$(cd "$T/repo" && FAKE_FAIL_CONTINUE=1 "$ROOT/bin/claude-auto" 2>&1 >/dev/null | grep -c 'claude --resume s')"
 refuses "a failure that isn't at startup is passed through" bash -c "cd '$T/repo' && FAKE_FAIL_CONTINUE=1 CLAUDE_AUTO_GRACE=0 '$ROOT/bin/claude-auto'"
+SP="$T/sp ace"; mkdir -p "$SP/.claude-x" "$SP/.claude/projects/$(enc "$T/repo")" "$T/cfg-sp"   # a HOME with a space
+touch "$SP/.claude/projects/$(enc "$T/repo")/s.jsonl"
+printf 'main=~/.claude\nx=~/.claude-x\n' > "$T/cfg-sp/accounts"; echo main > "$T/cfg-sp/active"; echo "CLAUDE_REAL=$fake/claude" > "$T/cfg-sp/config"
+agents "$SP/.claude-x" bg56 s
+expect "account folders with spaces survive the fallback loop" "dir=$SP/.claude-x args=attach bg56" \
+  "$(cd "$T/repo" && HOME="$SP" CLAUDE_ACCOUNTS_DIR="$T/cfg-sp" FAKE_FAIL_CONTINUE=1 "$ROOT/bin/claude-auto" 2>/dev/null)"
 
 echo "language"
 expect "English by default" "(not logged in)" "$("$CA" list | grep ' gamma ' | sed 's/.*(not/(not/')"
