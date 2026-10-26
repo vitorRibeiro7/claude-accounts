@@ -19,6 +19,7 @@ refuses() { # description, command...
   local d="$1"; shift; "$@" >/dev/null 2>&1 && bad "$d (should refuse)" || ok "$d"
 }
 yes_if() { "$@" && echo yes; }
+enc() { printf '%s\n' "${1//[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789]/-}"; }   # Claude's projects/ folder for a path
 
 echo "default account"
 echo "personal=~/.claude" > "$CLAUDE_ACCOUNTS_DIR/accounts"; echo personal > "$CLAUDE_ACCOUNTS_DIR/active"
@@ -175,14 +176,16 @@ expect "the wrapper registers its session" "yes" "$(for f in "$CLAUDE_ACCOUNTS_D
 echo "CLAUDE_REAL=/nowhere" > "$CLAUDE_ACCOUNTS_DIR/config"
 expect "finds the real claude in PATH if CLAUDE_REAL is stale" "dir=unset args=" "$(PATH="$fake:$PATH" "$ROOT/bin/claude")"
 echo "CLAUDE_REAL=$fake/claude" > "$CLAUDE_ACCOUNTS_DIR/config"
-mkdir -p "$T/repo" "$HOME/.claude/projects/${T//[\/.]/-}-repo"
+mkdir -p "$T/repo" "$HOME/.claude/projects/$(enc "$T/repo")"
 expect "claude-auto starts fresh without history" "dir=unset args=" "$(cd "$T" && "$ROOT/bin/claude-auto")"
-touch "$HOME/.claude/projects/${T//[\/.]/-}-repo/s.jsonl"
+touch "$HOME/.claude/projects/$(enc "$T/repo")/s.jsonl"
 expect "claude-auto continues when there is history" "dir=unset args=--continue" "$(cd "$T/repo" && "$ROOT/bin/claude-auto")"
+odd="$T/my_app v2"; mkdir -p "$odd" "$HOME/.claude/projects/$(enc "$odd")"; touch "$HOME/.claude/projects/$(enc "$odd")/s.jsonl"
+expect "claude-auto encodes _ and spaces like Claude Code does" "dir=unset args=--continue" "$(cd "$odd" && "$ROOT/bin/claude-auto")"
 agents() { # account dir, short id, session id → that account lists one background session
   printf '[\n  {\n    "id": "%s",\n    "cwd": "%s",\n    "kind": "background",\n    "sessionId": "%s",\n    "state": "done"\n  },\n  {\n    "pid": 1,\n    "kind": "interactive",\n    "sessionId": "other"\n  }\n]\n' "$2" "$T/repo" "$3" > "$1/fake-agents.json"
 }
-hist="$HOME/.claude/projects/${T//[\/.]/-}-repo"
+hist="$HOME/.claude/projects/$(enc "$T/repo")"
 touch "$hist/old.jsonl"; sleep 1; touch "$hist/s.jsonl"            # s = the last conversation here
 agents "$HOME/.claude" bg12 s
 expect "claude-auto reattaches when the last conversation is a background session" "dir=unset args=attach bg12" \
@@ -218,7 +221,7 @@ expect "ca shows where the account comes from" "1" "$(cd "$P/src" && "$CA" | gre
 expect "ca list marks the account used here" "1" "$(cd "$P" && "$CA" list | grep -c '^> gamma')"
 expect "the wrapper follows the pin" "dir=$HOME/.claude-gamma args=" "$(cd "$P/src" && "$ROOT/bin/claude")"
 expect "claude-auto follows the pin" "dir=$HOME/.claude-gamma args=" "$(cd "$P/src" && "$ROOT/bin/claude-auto")"
-mkdir -p "$HOME/.claude-gamma/projects/${P//[\/.]/-}-src" && touch "$HOME/.claude-gamma/projects/${P//[\/.]/-}-src/s.jsonl"
+mkdir -p "$HOME/.claude-gamma/projects/$(enc "$P/src")" && touch "$HOME/.claude-gamma/projects/$(enc "$P/src")/s.jsonl"
 expect "claude-auto continues using the pinned account's history" "dir=$HOME/.claude-gamma args=--continue" "$(cd "$P/src" && "$ROOT/bin/claude-auto")"
 expect "claude-auto follows CLAUDE_ACCOUNT" "dir=$HOME/.claude-alpha" "$(cd "$P/src" && CLAUDE_ACCOUNT=alpha "$ROOT/bin/claude-auto" | cut -d' ' -f1)"
 expect "CLAUDE_ACCOUNT beats the pin" "$HOME/.claude-alpha" "$(cd "$P" && CLAUDE_ACCOUNT=alpha "$CA" _dir)"

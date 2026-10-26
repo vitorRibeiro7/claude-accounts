@@ -16,8 +16,10 @@ if [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
   [ -n "$d" ] && export CLAUDE_CONFIG_DIR="$d"
 fi
 
-# Claude stores conversations in <account dir>/projects/<path with / and . turned into ->
-project="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/${PWD//[\/.]/-}"
+# Claude stores conversations in <account dir>/projects/<cwd with every character that is not an
+# ASCII letter or digit turned into "-">. The set is spelled out: bracket ranges follow the locale
+# in some bash builds, and Claude's rule is plain ASCII.
+project="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/${PWD//[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789]/-}"
 [ -n "$(compgen -G "$project/*.jsonl" 2>/dev/null)" ] || exec "$HERE/claude" "$@"
 
 # shellcheck disable=SC1091
