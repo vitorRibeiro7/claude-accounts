@@ -333,7 +333,8 @@ cmd_statusline() {
 
 statusline_install() {
   local f cmd entry
-  f="$(dir_of "$(current)")/settings.json"
+  resolve                                          # a broken pin dies here, before anything is written
+  f="$(dir_of "$RES_NAME")/settings.json"
   cmd="$(cd "$(dirname "$0")" && pwd)/claude-accounts statusline"
   entry="\"statusLine\": { \"type\": \"command\", \"command\": \"$cmd\" }"
   if [ -f "$f" ] && grep -q '"statusLine"' "$f"; then
