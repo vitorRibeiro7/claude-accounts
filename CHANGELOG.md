@@ -3,7 +3,7 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.2.1] - 2026-10-26
 
 ### Fixed
 - `ca new` and `install.sh --name` refuse `ls` and `rm`, the aliases of `list` and `remove`, as
@@ -69,6 +69,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - One-line installer with automatic migration from `claude-contas`.
 - Test suite in a fake `HOME`, CI on Linux and macOS, shellcheck.
 
+[1.2.1]: https://github.com/vitorRibeiro7/claude-accounts/releases/tag/v1.2.1
 [1.2.0]: https://github.com/vitorRibeiro7/claude-accounts/releases/tag/v1.2.0
 [1.1.0]: https://github.com/vitorRibeiro7/claude-accounts/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vitorRibeiro7/claude-accounts/releases/tag/v1.0.0

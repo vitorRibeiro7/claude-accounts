@@ -14,7 +14,7 @@
 #   2. CLAUDE_ACCOUNT=NAME               (per terminal / per command)
 #   3. .claude-account in this folder or a parent   (per project, written by `ca here NAME`)
 #   4. the global active account         (`ca NAME`)
-VERSION="1.2.0"
+VERSION="1.2.1"
 CFG="${CLAUDE_ACCOUNTS_DIR:-$HOME/.config/claude-accounts}"
 ACCOUNTS="$CFG/accounts"
 ACTIVE="$CFG/active"
