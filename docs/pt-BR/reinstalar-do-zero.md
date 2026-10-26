@@ -137,7 +137,6 @@ ca new NOME-3 --clean           # ou isolada
 Para **cada** conta, uma por vez:
 
 ```bash
-ca stop             # se houver sessão do Claude aberta
 ca NOME
 claude
 # dentro do Claude:  /login   → entre com o e-mail DAQUELA conta
@@ -211,7 +210,7 @@ Primeiro passo para qualquer problema: `ca doctor`.
 
 **`claude-accounts: real 'claude' not found`** → o Claude Code não está instalado ou mudou de lugar e não está no PATH. Instale/conserte e rode o `install.sh` de novo; ele regrava o caminho. (Se o Claude só mudou de lugar mas continua no PATH, o wrapper o encontra sozinho.)
 
-**`ca NOME` diz que há sessões abertas** → proposital. `ca sessions` mostra quais; `ca stop` encerra.
+**`ca NOME` avisa de sessões abertas** → elas continuam na conta em que começaram; a troca vale para novos lançamentos. `ca sessions` mostra quais; `ca stop` encerra, se quiser tudo na conta nova.
 
 **A conta aparece sem login mesmo depois do `/login`** → o login foi feito com outra conta ativa. `ca` mostra qual estava ativa; refaça o passo 6 com a conta certa.
 

@@ -42,7 +42,7 @@ Claude Code keeps one login per config folder. If you have a personal subscripti
 - 🔐 **Logins stay separate** — each account keeps its own credentials; nothing is copied or shared.
 - 🧩 **Shared setup** — install a plugin or skill once, have it in every account (optional, per account).
 - 💬 **Resume across accounts** — shared conversation history, so `/resume` works no matter which account you're on.
-- 🛡️ **Safe by default** — refuses to switch while sessions are open, never deletes a folder without asking, keeps a backup of anything it relinks.
+- 🛡️ **Safe by default** — never opens Claude on a guessed account, never deletes a folder without asking, keeps a backup of anything it relinks, and won't move shared files while sessions are open.
 - 🪶 **Tiny & dependency-free** — three bash scripts. No Node, no Python, no daemon. Works with the stock bash 3.2 on macOS.
 
 ## Install
@@ -109,7 +109,7 @@ ca statusline --install   # Claude Code's bottom bar: ● work · you@company.co
 |---|---|
 | `ca` | show the active account and its email |
 | `ca list` | all accounts; `*` marks the active one |
-| `ca NAME` / `ca use NAME` | switch the global account to NAME (refuses while sessions are open) |
+| `ca NAME` / `ca use NAME` | switch the global account to NAME (open sessions keep the account they started with) |
 | `ca here [NAME \| --unset]` | pin this folder and its subfolders to an account |
 | `ca new NAME [--clean \| --share OTHER]` | create an account — linked to the base by default, isolated with `--clean` |
 | `ca base [NAME]` | show / move the **base**: the account that holds the shared plugins, skills and settings |

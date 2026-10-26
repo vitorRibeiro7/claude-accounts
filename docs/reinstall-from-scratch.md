@@ -127,7 +127,6 @@ ca new NAME-3 --clean                   # or isolated
 For **each** account, one at a time:
 
 ```bash
-ca stop             # if any Claude session is open
 ca NAME
 claude
 # inside Claude:  /login   → sign in with THAT account's email
@@ -197,7 +196,7 @@ claude-auto
 
 **`claude-accounts: real 'claude' not found`** → Claude Code was reinstalled elsewhere or removed. Install it, then run `install.sh` again; it rewrites the path.
 
-**`ca NAME` says sessions are open** → on purpose. `ca sessions` shows which; `ca stop` terminates them.
+**`ca NAME` mentions open sessions** → they keep the account they started with; the switch applies to new launches. `ca sessions` shows which; `ca stop` closes them if you want everything on the new account.
 
 **The account shows not logged in even after `/login`** → you logged in while another account was active. `ca` shows which one was active; redo step 6 on the right account.
 

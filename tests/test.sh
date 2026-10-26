@@ -4,7 +4,7 @@
 # shellcheck disable=SC2015,SC2016,SC2088  # A && ok || bad is intended; literal ~ and $ are expected output
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-T="$(mktemp -d)"; trap 'rm -rf "$T"; [ -n "${SLEEPER:-}" ] && kill "$SLEEPER" 2>/dev/null' EXIT
+T="$(mktemp -d)"; trap 'rm -rf "$T"; for s in ${SLEEPER:-} ${S2:-}; do kill "$s" 2>/dev/null; done' EXIT
 export HOME="$T/home" CLAUDE_ACCOUNTS_DIR="$T/cfg" CLAUDE_ACCOUNTS_PROC_NAME="claude-ghost-$$"
 unset CLAUDE_CONFIG_DIR CLAUDE_ACCOUNTS_LANG CLAUDE_ACCOUNTS_BIN
 mkdir -p "$HOME" "$CLAUDE_ACCOUNTS_DIR"
@@ -144,17 +144,23 @@ mkdir -p "$CLAUDE_ACCOUNTS_DIR/sessions"
 printf '%s\n%s\n%s\n' "$HOME/.claude-beta" "$HOME/proj" "$(ps -o lstart= -p "$SLEEPER")" > "$CLAUDE_ACCOUNTS_DIR/sessions/$SLEEPER"
 expect "sessions lists the registered session" "1" "$("$CA" sessions | grep -c "PID $SLEEPER")"
 expect "sessions shows its account and folder" "yes" "$("$CA" sessions | grep -q '.claude-beta *~/proj' && echo yes)"
-refuses "won't switch with an open session" "$CA" gamma
+out="$("$CA" gamma 2>&1)"
+expect "switching with an open session goes through (the session keeps its account)" "gamma" "$(cat "$CLAUDE_ACCOUNTS_DIR/active")"
+expect "...and the switch says so" "1" "$(echo "$out" | grep -c '1 open session keeps')"
+sleep 60 & S2=$!
+printf '%s\n%s\n%s\n' "$HOME/.claude-alpha" "$HOME" "$(ps -o lstart= -p "$S2")" > "$CLAUDE_ACCOUNTS_DIR/sessions/$S2"
+expect "...counting them" "1" "$("$CA" personal 2>&1 | grep -c '2 open sessions keep')"
 refuses "won't share an account with an open session" "$CA" share beta gamma
 echo n | "$CA" stop >/dev/null 2>&1
 expect "stop asks before killing" "yes" "$(yes_if kill -0 "$SLEEPER" 2>/dev/null)"
 echo y | "$CA" stop >/dev/null
 expect "stop terminates it" "" "$(yes_if kill -0 "$SLEEPER" 2>/dev/null)"
-wait "$SLEEPER" 2>/dev/null; SLEEPER=""
+expect "...all of them" "" "$(yes_if kill -0 "$S2" 2>/dev/null)"
+wait "$SLEEPER" 2>/dev/null; wait "$S2" 2>/dev/null; SLEEPER=""; S2=""
 printf '%s\n%s\n%s\n' "$HOME/.claude-beta" "$HOME" "Thu Jan  1 00:00:00 1970" > "$CLAUDE_ACCOUNTS_DIR/sessions/1"
 "$CA" gamma >/dev/null
-expect "a stale entry (PID reused) does not block and is cleaned" "no" "$([ -e "$CLAUDE_ACCOUNTS_DIR/sessions/1" ] && echo yes || echo no)"
-"$CA" alpha >/dev/null
+expect "a stale entry (PID reused) is cleaned up" "no" "$([ -e "$CLAUDE_ACCOUNTS_DIR/sessions/1" ] && echo yes || echo no)"
+expect "no note when nothing is open" "0" "$("$CA" alpha 2>&1 | grep -c 'open session')"
 
 echo "wrapper"
 fake="$T/fakebin"; mkdir -p "$fake"

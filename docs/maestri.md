@@ -96,4 +96,4 @@ You should get back JSON with `subscription_type` (the plan) and `rate_limits`. 
 - **Do not keep backups inside the `providers` folder**: Maestri loads everything in it. Keep copies elsewhere.
 - **Account not logged in** (`ca list` shows `(not logged in)`): its meter stays empty or in error until you log in.
 - **Renamed an account's folder?** Update its provider (and `~/.config/claude-accounts/accounts`, and any alias).
-- **Meter refreshes are short Claude processes.** While one runs (a few seconds, every few minutes), `ca NAME` sees it as an open session and refuses; just try again. On macOS these processes bypass the wrapper and show as `(unknown)` in `ca sessions` (see [how-it-works.md](how-it-works.md#sessions)).
+- **Meter refreshes are short Claude processes.** While one runs (a few seconds, every few minutes), `ca NAME` counts it as an open session in its note, and `ca share` / `ca base` refuse until it ends; just try again. On macOS these processes bypass the wrapper and show as `(unknown)` in `ca sessions` (see [how-it-works.md](how-it-works.md#sessions)).

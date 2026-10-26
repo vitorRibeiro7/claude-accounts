@@ -46,7 +46,7 @@ Consequences, already handled by the code:
 
 ## Sessions
 
-The account is decided **when Claude starts**. A session that is already open stays on the old account. Switching anyway would leave you with processes on different accounts without noticing. So `ca NAME` refuses while any `claude` process is running, and `ca sessions` / `ca stop` help you deal with it.
+The account is decided **when Claude starts**, so a session that is already open keeps the account it started with. `ca NAME` switches anyway and tells you how many open sessions that applies to, so nothing changes behind your back; `ca sessions` lists them and `ca stop` closes them when you want everything on the new account. `ca share` and `ca base` do refuse while sessions are open, because they move the files those sessions are using.
 
 How sessions are found:
 
@@ -180,17 +180,16 @@ sequenceDiagram
 
 ### 3. Switching with `ca NAME`
 
-The account is decided when Claude starts, so switching refuses while a session is open.
+The account is decided when Claude starts, so a switch only affects new launches; sessions already open are counted, not closed.
 
 ```mermaid
 flowchart TD
     A["ca client-x"] --> B{"is client-x<br/>in the account list?"}
     B -- no --> E1["error: account does not exist<br/>suggests: ca new client-x"]
-    B -- yes --> C{"any claude process<br/>open? (sessions/ + pgrep)"}
-    C -- yes --> E2["refuses and lists the sessions<br/>suggests: ca stop"]
-    C -- no --> D["writes 'client-x' to active"]
+    B -- yes --> D["writes 'client-x' to active"]
     D --> F["shows: active account: client-x<br/>~/.claude-client-x · you@client-x.example.com"]
-    E2 -. "ca stop<br/>(TERM, then KILL)" .-> A
+    F --> C{"any claude process<br/>open? (sessions/ + pgrep)"}
+    C -- yes --> N["note: N open sessions keep the account<br/>they started with (ca sessions / ca stop)"]
 ```
 
 ### 4. Base and sharing

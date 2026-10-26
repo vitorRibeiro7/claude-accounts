@@ -86,4 +86,5 @@ Deve voltar um JSON com `subscription_type` (o plano) e `rate_limits`. Se cada p
 - **Não deixe backups dentro da pasta `providers`**: o Maestri carrega o que está lá. Guarde cópias fora.
 - **Conta sem login** (`ca list` mostra `(sem login)`): o anel dela fica com erro ou vazio até você fazer o login.
 - **Renomeou a pasta de uma conta?** Atualize o provider dela (e `~/.config/claude-accounts/accounts`, e o alias, se houver).
+- **As atualizações dos anéis são processos curtos do Claude.** Enquanto um roda (alguns segundos, de tempos em tempos), `ca NOME` conta ele como sessão aberta no aviso, e `ca share` / `ca base` recusam até ele terminar; é só tentar de novo. No macOS esses processos não passam pelo wrapper e aparecem como `(desconhecida)` no `ca sessions` (veja [como-funciona.md](como-funciona.md#sessões)).
 - **Veio do `claude-contas`?** Providers antigos leem `~/.config/claude-contas/config`. Troque para `~/.config/claude-accounts/config`.
