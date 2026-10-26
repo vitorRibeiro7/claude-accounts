@@ -8,7 +8,7 @@ Cenário: você já tem o `claude-accounts` instalado e vai começar a usar **ma
 
 ### 1. Escolha um nome
 
-Minúsculas, números, `-` ou `_`. É o nome que você vai digitar no `ca`: `trabalho`, `cliente-x`, `freela`. Nomes de comandos (`list`, `new`, `use`, `stop`…) são reservados.
+Minúsculas, números, `-` ou `_`. É o nome que você vai digitar no `ca`: `trabalho`, `cliente-x`, `freela`. Nomes de comandos (`list`, `ls`, `use`, `new`, `base`, `share`, `remove`, `rm`, `here`, `sessions`, `stop`, `lang`, `statusline`, `prompt`, `doctor`, `help`, `version`) são reservados.
 
 ### 2. Crie a conta
 

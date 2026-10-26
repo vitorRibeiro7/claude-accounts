@@ -35,6 +35,8 @@ expect "new account is not logged in" "1" "$("$CA" list | grep -c ' work .*(not 
 refuses "duplicate name" "$CA" new work
 refuses "invalid name" "$CA" new "Bad Name"
 refuses "reserved name" "$CA" new list
+refuses "reserved alias ls" "$CA" new ls
+refuses "reserved alias rm" "$CA" new rm
 mkdir -p "$HOME/.claude-work/plugins"; echo x > "$HOME/.claude-work/settings.json"
 "$CA" new client --share work >/dev/null
 expect "--share creates a link" "yes" "$(yes_if [ -L "$HOME/.claude-client/settings.json" ])"
@@ -296,6 +298,9 @@ expect "upgrading keeps the rest of the file" "top" "$(head -1 "$IH/.zshrc")"
 inst --uninstall >/dev/null 2>&1
 expect "uninstall removes the block" "0" "$(grep -cxF '# >>> claude-accounts >>>' "$IH/.zshrc")"
 expect "uninstall keeps the accounts" "personal=~/.claude" "$(cat "$IH/.config/claude-accounts/accounts")"
+IH2="$T/ihome2"; mkdir -p "$IH2"
+refuses "install refuses a reserved name" env HOME="$IH2" SHELL=/bin/zsh CLAUDE_ACCOUNTS_DIR="$IH2/.config/claude-accounts" PATH="$fake:$PATH" LANG=C LC_ALL='' bash "$ROOT/install.sh" --name rm
+expect "...and registers no account" "" "$(cat "$IH2/.config/claude-accounts/accounts" 2>/dev/null)"
 
 echo "migration from claude-contas"
 MH="$T/mhome"; mkdir -p "$MH/.config/claude-contas"
