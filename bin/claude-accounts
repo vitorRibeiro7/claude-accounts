@@ -280,21 +280,26 @@ cmd_list() {
                          "Atenção: a conta ativa '$stale' não está na lista; escolha uma com: ca NOME"
 }
 
+# The account is picked when Claude starts, so switching never touches an open session: it keeps
+# the account it started with. The switch goes through and says how many sessions that applies to.
+# (ca share and ca base do refuse with sessions open: they move the files those sessions use.)
 cmd_use() {
+  local n
   [ -n "$(dir_of "$1")" ] || die "account '$1' does not exist. See: ca list   ·   create it: ca new $1" \
                                  "conta '$1' não existe. Veja: ca list   ·   criar: ca new $1"
-  if [ -n "$(pids)" ]; then
-    say "Claude sessions are open — switching now would leave them on the old account:" \
-        "Há sessões do Claude abertas — trocar agora deixaria processos na conta antiga:"
-    list_sessions
-    say "Close them or run:  ca stop   and try again." "Feche-as ou rode:  ca stop   e tente de novo."
-    exit 1
-  fi
   echo "$1" > "$ACTIVE"
   resolve
   if [ "$RES_SRC" = global ]; then show
   else say "Global account is now '$1', but '$RES_NAME' applies here (see: ca)." \
            "A conta global agora é '$1', mas aqui vale '$RES_NAME' (veja: ca)."; fi
+  n="$(pids | grep -c .)"
+  if [ "$n" -eq 1 ]; then
+    say "Note: 1 open session keeps the account it started with; the switch applies to new launches (see: ca sessions)." \
+        "Obs.: 1 sessão aberta continua na conta em que começou; a troca vale para novos lançamentos (veja: ca sessions)."
+  elif [ "$n" -gt 1 ]; then
+    say "Note: $n open sessions keep the account they started with; the switch applies to new launches (see: ca sessions)." \
+        "Obs.: $n sessões abertas continuam na conta em que começaram; a troca vale para novos lançamentos (veja: ca sessions)."
+  fi
 }
 
 # The pin is a personal setting, never project config: inside a git repo it goes to
@@ -416,7 +421,7 @@ cmd_new() {
 Conta '$name' criada em $dir (ainda sem login).
 
 Próximos passos:
-  1. ca $name        # troca para ela (feche as sessões abertas antes: ca stop)
+  1. ca $name        # troca para ela
   2. claude          # abre o Claude Code
   3. /login          # dentro dele, entre com o e-mail certo
   4. ca              # confira: deve mostrar o e-mail dessa conta
@@ -425,7 +430,7 @@ EOF
 Account '$name' created at $dir (not logged in yet).
 
 Next steps:
-  1. ca $name        # switch to it (close open sessions first: ca stop)
+  1. ca $name        # switch to it
   2. claude          # open Claude Code
   3. /login          # inside it, sign in with the right email
   4. ca              # check: it should show this account's email
@@ -570,7 +575,7 @@ claude-accounts (ca) — várias contas do Claude Code na mesma máquina
 
   ca                          conta ativa e e-mail
   ca list                     todas as contas (* = ativa)
-  ca NOME | ca use NOME       troca para a conta NOME (recusa se houver sessão aberta)
+  ca NOME | ca use NOME       troca a conta global para NOME (sessões abertas ficam na delas)
   ca here [NOME | --unset]    fixa esta pasta (e subpastas) numa conta (.claude-account)
   ca new NOME [--clean | --share OUTRA]
                               cria conta; por padrão já nasce ligada à base
@@ -595,7 +600,7 @@ claude-accounts (ca) — several Claude Code accounts on one machine
 
   ca                          active account and email
   ca list                     all accounts (* = active)
-  ca NAME | ca use NAME       switch to account NAME (refuses while sessions are open)
+  ca NAME | ca use NAME       switch the global account to NAME (open sessions keep theirs)
   ca here [NAME | --unset]    pin this folder (and subfolders) to an account (.claude-account)
   ca new NAME [--clean | --share OTHER]
                               create an account; linked to the base by default

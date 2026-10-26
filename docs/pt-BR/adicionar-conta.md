@@ -30,9 +30,10 @@ ca new freela --share pessoal  # liga a outra conta, em vez da base
 ### 3. Troque para ela
 
 ```bash
-ca stop           # se houver sessões do Claude abertas
 ca freela         # ou: ca use freela
 ```
+
+Sessões já abertas continuam na conta em que começaram; a conta nova vale para o `claude` que você abrir em seguida.
 
 ### 4. Faça o login (a parte que mais dá dúvida)
 

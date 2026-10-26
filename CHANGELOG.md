@@ -3,6 +3,13 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- `ca NAME` switches even while Claude sessions are open. The account is picked when Claude starts,
+  so open sessions keep theirs; the command now says how many sessions that applies to instead of
+  refusing. `ca share` and `ca base` still refuse, because they move shared files.
+
 ## [1.2.1] - 2026-10-26
 
 ### Fixed

@@ -42,7 +42,7 @@ O `claude-accounts` dá a cada conta a sua pasta e troca entre elas definindo o 
 - 🔐 **Logins separados**: cada conta guarda as próprias credenciais; nada é copiado nem compartilhado.
 - 🧩 **Configuração compartilhada**: instale um plugin ou skill uma vez e tenha em todas as contas (opcional, por conta).
 - 💬 **Retome conversas entre contas**: histórico compartilhado, então o `/resume` funciona em qualquer conta.
-- 🛡️ **Seguro por padrão**: recusa trocar com sessão aberta, nunca apaga pasta sem perguntar e guarda backup de tudo que religa.
+- 🛡️ **Seguro por padrão**: nunca abre o Claude numa conta "chutada", nunca apaga pasta sem perguntar, guarda backup de tudo que religa e não move arquivos compartilhados com sessão aberta.
 - 🪶 **Pequeno e sem dependências**: três scripts bash. Sem Node, sem Python, sem daemon. Funciona com o bash 3.2 de fábrica do macOS.
 
 ## Instalar
@@ -113,7 +113,7 @@ O `ca prompt` mostra a conta no prompt do terminal (exemplos para starship, powe
 |---|---|
 | `ca` | mostra a conta ativa e o e-mail |
 | `ca list` | todas as contas; `*` marca a ativa |
-| `ca NOME` / `ca use NOME` | troca a conta global para NOME (recusa se houver sessão aberta) |
+| `ca NOME` / `ca use NOME` | troca a conta global para NOME (sessões abertas continuam na conta em que começaram) |
 | `ca here [NOME \| --unset]` | fixa esta pasta e as subpastas numa conta |
 | `ca new NOME [--clean \| --share OUTRA]` | cria conta: ligada à base por padrão, isolada com `--clean` |
 | `ca base [NOME]` | mostra / troca a **base**: a conta que guarda plugins, skills e configurações compartilhados |

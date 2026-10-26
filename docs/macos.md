@@ -33,7 +33,6 @@ On macOS, Claude Code stores the OAuth token in the **login Keychain** rather th
 
 ```bash
 ca new work
-ca stop             # if sessions are open
 ca work
 claude              # then /login with that account's email
 ```

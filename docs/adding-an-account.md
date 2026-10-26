@@ -32,9 +32,10 @@ ca new freelance --share other       # linked to another account instead of the 
 ### 3. Switch to it
 
 ```bash
-ca stop            # if any Claude sessions are open
 ca freelance       # same as: ca use freelance
 ```
+
+Sessions already open keep the account they started with; the new account applies to the `claude` you open next.
 
 ### 4. Log in (the step people get wrong most often)
 

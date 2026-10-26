@@ -47,9 +47,9 @@ Consequências, já tratadas pelo código:
 - Para a conta cuja pasta é `~/.claude`, o wrapper **não define** a variável. Apontar `CLAUDE_CONFIG_DIR=~/.claude` procuraria o login em `~/.claude/.claude.json`, que não existe, e a conta pareceria deslogada.
 - Para ler o e-mail de uma conta, o `ca` olha o arquivo certo conforme o caso.
 
-## Por que a troca recusa com sessão aberta
+## Sessões
 
-A conta é decidida **quando o Claude abre**. Uma sessão já aberta continua na conta antiga. Se trocasse mesmo assim, você teria processos de contas diferentes sem perceber. Por isso `ca NOME` falha enquanto houver sessão do Claude aberta, e `ca sessions` / `ca stop` ajudam a resolver.
+A conta é decidida **quando o Claude abre**, então uma sessão já aberta continua na conta em que começou. `ca NOME` troca mesmo assim e diz quantas sessões abertas ficam como estão, para nada mudar pelas suas costas; `ca sessions` lista e `ca stop` encerra, quando você quiser tudo na conta nova. `ca share` e `ca base` recusam com sessão aberta, porque movem os arquivos que essas sessões estão usando.
 
 Como as sessões são encontradas:
 
@@ -188,17 +188,16 @@ sequenceDiagram
 
 ### 3. Trocar de conta com `ca NOME`
 
-A conta é decidida quando o Claude abre. Por isso a troca recusa se houver sessão aberta.
+A conta é decidida quando o Claude abre, então a troca só afeta novos lançamentos; sessões já abertas são contadas, não fechadas.
 
 ```mermaid
 flowchart TD
     A["ca cliente-x"] --> B{"cliente-x está<br/>na lista de contas?"}
     B -- não --> E1["erro: conta não existe<br/>sugere: ca new cliente-x"]
-    B -- sim --> C{"há sessão do claude aberta?<br/>(sessions/ + pgrep; /proc no Linux)"}
-    C -- sim --> E2["recusa e lista as sessões<br/>sugere: ca stop"]
-    C -- não --> D["grava 'cliente-x' em active"]
+    B -- sim --> D["grava 'cliente-x' em active"]
     D --> F["mostra: conta ativa: cliente-x<br/>~/.claude-cliente-x · voce@cliente-x.exemplo.com"]
-    E2 -. "ca stop<br/>(TERM, depois KILL)" .-> A
+    F --> C{"há sessão do claude aberta?<br/>(sessions/ + pgrep; /proc no Linux)"}
+    C -- sim --> N["obs.: N sessões abertas continuam na conta<br/>em que começaram (ca sessions / ca stop)"]
 ```
 
 ### 4. Base e compartilhamento
