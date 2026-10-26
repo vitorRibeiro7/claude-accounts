@@ -5,7 +5,8 @@ _claude_accounts() {
     'list:all accounts' 'use:switch the global account' 'new:create an account'
     'base:show / move the base account' 'share:link an account to another one'
     'remove:drop an account from the list' 'here:pin this folder to an account'
-    'sessions:open Claude sessions' 'stop:terminate all sessions' 'lang:UI language'
+    'sessions:open Claude sessions' 'stop:terminate all sessions' 'usage:plan usage of every account'
+    'lang:UI language'
     'statusline:account in the Claude Code status line' 'prompt:account name for your prompt'
     'doctor:check the installation' 'version:show the version' 'help:show help'
   )
@@ -22,6 +23,7 @@ _claude_accounts() {
     new:4)        compadd -- --clean --share ;;
     lang:3)       compadd -- en pt-BR ;;
     statusline:3) compadd -- --install ;;
+    usage:*)      _describe -t accounts 'account' accounts ;;
   esac
 }
 (( $+functions[compdef] )) && compdef _claude_accounts claude-accounts ca

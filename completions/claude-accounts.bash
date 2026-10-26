@@ -2,7 +2,7 @@
 # shellcheck disable=SC2207  # compgen output is word-split on purpose (bash 3.2 has no mapfile)
 _claude_accounts() {
   local cur="${COMP_WORDS[COMP_CWORD]}" accounts
-  local cmds="list use new base share remove here sessions stop lang statusline prompt doctor version help"
+  local cmds="list use new base share remove here sessions stop usage lang statusline prompt doctor version help"
   accounts="$(claude-accounts _names 2>/dev/null)"
   COMPREPLY=()
   if [ "$COMP_CWORD" -eq 1 ]; then
@@ -16,5 +16,6 @@ _claude_accounts() {
     statusline:2) COMPREPLY=($(compgen -W "--install" -- "$cur")) ;;
   esac
   case "${COMP_WORDS[1]}:$COMP_CWORD" in here:2) COMPREPLY+=($(compgen -W "--unset" -- "$cur")) ;; esac
+  case "${COMP_WORDS[1]}" in usage) COMPREPLY=($(compgen -W "$accounts" -- "$cur")) ;; esac   # ca usage NAME...
 }
 complete -F _claude_accounts claude-accounts ca

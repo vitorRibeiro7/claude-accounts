@@ -64,6 +64,12 @@ O nome do processo precisa continuar `claude`: o wrapper chama o link `claude` e
 
 Quando a última conversa virou **sessão em segundo plano**, o `--continue` se recusa a abri-la. O `claude-auto` consulta o `claude agents --json` antes e, se a conversa for uma sessão em segundo plano, reabre a mesma sessão com `claude attach <id>`. Se mesmo assim o `--continue` se recusar ao abrir, ele procura a sessão nas suas outras contas (as conversas são compartilhadas pelo `projects/`) e reconecta com a conta dona dela. Ele nunca começa uma sessão nova sozinho: se nada funcionar, mostra o `claude --resume <id>` para usar e para.
 
+## `ca usage`
+
+O `ca usage` pergunta a cada conta com login o uso do plano pelo modo stream-json do próprio Claude Code: roda o binário real (não o wrapper, então nada é registrado como sessão) com a pasta da conta, manda a requisição de controle `get_usage` que os medidores de uso usam e lê a resposta. Também roda `claude auth status --json`, para uma conta que perdeu o login (o e-mail continua no `.claude.json`) ou que usa API key aparecer como tal, e não com números vazios. Todas as contas são consultadas em paralelo; uma que não responde em 30 segundos (`CLAUDE_ACCOUNTS_USAGE_TIMEOUT`) aparece assim. Contas sem login não são consultadas, porque não há o que mostrar e o Claude criaria arquivos na pasta delas. Nada vai para um modelo, então não gasta uso.
+
+Essa requisição não é uma API documentada do Claude Code. Se uma versão deixar de respondê-la, a linha mostra o erro do Claude Code no lugar dos números.
+
 ## A base e o compartilhamento
 
 A **base** (`~/.config/claude-accounts/base`) é só o nome da conta que guarda a configuração de verdade. `ca new` liga a conta nova a ela por padrão; `--clean` desliga isso e `--share OUTRA` liga a outra conta. `ca base OUTRA` troca a base de verdade: move os itens compartilhados para a nova e religa as demais.

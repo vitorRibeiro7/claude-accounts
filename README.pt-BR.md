@@ -39,6 +39,7 @@ O `claude-accounts` dá a cada conta a sua pasta e troca entre elas definindo o 
 - ⚡ **Um comando para trocar**: `ca trabalho`, depois `claude`. Só isso.
 - 📁 **Conta por projeto**: `ca here trabalho` uma vez, e o `claude` abre na conta certa naquele repositório. Sessão pessoal e do trabalho lado a lado.
 - 👀 **Sempre saiba onde está**: conta e e-mail na status line do Claude Code e no prompt do terminal.
+- 📊 **Limites de todas as contas de uma vez**: `ca usage` mostra o uso de 5 horas e da semana de cada conta, lado a lado, com a hora em que renova.
 - 🔐 **Logins separados**: cada conta guarda as próprias credenciais; nada é copiado nem compartilhado.
 - 🧩 **Configuração compartilhada**: instale um plugin ou skill uma vez e tenha em todas as contas (opcional, por conta).
 - 💬 **Retome conversas entre contas**: histórico compartilhado, então o `/resume` funciona em qualquer conta.
@@ -107,6 +108,18 @@ O `ca prompt` mostra a conta no prompt do terminal (exemplos para starship, powe
 
 > **Dica:** se o navegador já estiver logado em outra conta da Anthropic, o `/login` pode autorizar essa conta sem avisar. Use uma janela anônima.
 
+## Os limites de todas as contas
+
+```console
+$ ca usage
+  CONTA                PLANO    5H  RENOVA EM   7D  RENOVA EM  MODELOS
+* pessoal              max      3%  3h 18m     22%  14h 8m     Fable 34%
+  trabalho             pro     81%  42m        64%  2d 14h
+  cliente-x            team    96%  18m        92%  7h 8m
+```
+
+Todas as contas com login são consultadas ao mesmo tempo, pelo próprio Claude Code, então demora mais ou menos o da mais lenta (uns dois segundos). Valores perto do limite ficam amarelos e depois vermelhos. `ca usage trabalho` mostra só essa conta. É só informação: nunca troca de conta por você.
+
 ## Comandos
 
 | Comando | O que faz |
@@ -121,6 +134,7 @@ O `ca prompt` mostra a conta no prompt do terminal (exemplos para starship, powe
 | `ca remove NOME [--delete-dir]` | tira da lista (a pasta só é apagada com `--delete-dir`) |
 | `ca sessions` | sessões do Claude abertas e suas contas |
 | `ca stop` | encerra todas as sessões (pede confirmação) |
+| `ca usage [NOME…]` | uso do plano de cada conta: limites de 5 horas e da semana, quando renovam, limites por modelo |
 | `ca statusline [--install]` | conta e e-mail na status line do Claude Code |
 | `ca prompt` | nome da conta para o prompt do terminal |
 | `ca lang [en\|pt-BR]` | idioma das mensagens |

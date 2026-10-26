@@ -8,6 +8,7 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"; [ -n "${SLEEPER:-}" ] && kill "$SLEEPER" 2>
 export HOME="$T/home" CLAUDE_ACCOUNTS_DIR="$T/cfg" CLAUDE_ACCOUNTS_PROC_NAME="claude-ghost-$$"
 unset CLAUDE_CONFIG_DIR CLAUDE_ACCOUNTS_LANG CLAUDE_ACCOUNTS_BIN
 mkdir -p "$HOME" "$CLAUDE_ACCOUNTS_DIR"
+export TMPDIR="$T/tmp"; mkdir -p "$TMPDIR"   # temporary folders the scripts create stay inside the test
 CA="$ROOT/bin/claude-accounts"
 failures=0
 ok()  { echo "  ok   $1"; }
@@ -170,6 +171,19 @@ cat > "$fake/claude" <<'FAKE'
 if [ "${1:-}" = --continue ] && [ -n "${FAKE_FAIL_CONTINUE:-}" ]; then echo "moved to a background session" >&2; exit 1; fi
 # `claude agents --json`: each fake account lists the background sessions in its fake-agents.json
 if [ "${1:-}" = agents ]; then cat "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/fake-agents.json" 2>/dev/null || echo '[]'; exit 0; fi
+# `claude -p --input-format stream-json` (ca usage): log the request, answer with the account's fake-usage.json
+if [ "${1:-}" = -p ] && [ "${2:-}" = --input-format ]; then
+  acct="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"; read -r req
+  echo "dir=${CLAUDE_CONFIG_DIR:-unset} $req" >> "$acct/fake-usage.calls"
+  [ -e "$acct/fake-usage.hang" ] && exec sleep 30
+  cat "$acct/fake-usage.json" 2>/dev/null; exit 0
+fi
+# `claude auth status --json`: the account's fake-auth.json, logged in through claude.ai by default
+if [ "${1:-}" = auth ] && [ "${2:-}" = status ]; then
+  acct="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+  if [ -e "$acct/fake-auth.json" ]; then cat "$acct/fake-auth.json"; else printf '{\n  "loggedIn": true,\n  "authMethod": "claude.ai"\n}\n'; fi
+  exit 0
+fi
 echo "dir=${CLAUDE_CONFIG_DIR:-unset} args=$*"
 FAKE
 chmod +x "$fake/claude"
@@ -307,6 +321,60 @@ expect "...with the pin error, and no settings.json path" "1 0" \
   "$(cd "$P/src" && "$CA" statusline --install 2>&1 | grep -c "names 'ghost'") $(cd "$P/src" && "$CA" statusline --install 2>&1 | grep -c 'settings.json')"
 rm -f -- "$P/src/.claude-account" "$P/.claude-account"
 
+echo "usage (plan limits of every account)"
+# now = 2026-10-26T19:52:00Z; personal and gamma are logged in, alpha is not, beta gets a login below
+NOW=1793044320
+usage_reply() { # account dir, response object → that account answers the usage request with it
+  printf '{"type":"control_response","response":{"subtype":"success","request_id":"ca-usage","response":%s}}\n' "$2" > "$1/fake-usage.json"
+}
+usage_reply "$HOME/.claude" '{"subscription_type":"max","rate_limits_available":true,"rate_limits":{"five_hour":{"utilization":3,"resets_at":"2026-10-26T23:10:00.038739+00:00","locked_reason":null},"seven_day":{"utilization":22,"resets_at":"2026-10-27T10:00:00.038757+00:00"},"seven_day_opus":null,"seven_day_breakdown":{"rows":[{"key":"chat","percent":0}]},"model_scoped":[{"display_name":"Fable","utilization":34,"resets_at":"2026-10-27T10:00:00+00:00"},{"display_name":"Opus","utilization":12.6,"resets_at":"2026-10-27T10:00:00+00:00"}]}}'
+usage_reply "$HOME/.claude-gamma" '{"subscription_type":"pro","rate_limits_available":true,"rate_limits":{"seven_day":{"resets_at":"2026-10-29T10:00:00Z","utilization":64},"five_hour":{"resets_at":"2026-10-26T17:34:00-03:00","utilization":91}}}'
+u="$(CLAUDE_ACCOUNTS_NOW=$NOW "$CA" usage 2>/dev/null)"
+expect "usage has a header" "  ACCOUNT              PLAN     5H  RESETS IN   7D  RESETS IN  MODELS" "$(echo "$u" | sed -n 1p)"
+expect "usage shows plan, 5h and weekly use, reset times and per-model limits" \
+  "* personal             max      3%  3h 18m     22%  14h 8m     Fable 34% · Opus 13%" "$(echo "$u" | grep ' personal ')"
+expect "...for every account, with its own folder (time zone offsets included)" \
+  "  gamma                pro     91%  42m        64%  2d 14h" "$(echo "$u" | grep ' gamma ')"
+expect "an account without a login is listed but not asked" "  alpha                (not logged in) no" \
+  "$(echo "$u" | grep ' alpha ') $([ -e "$HOME/.claude-alpha/fake-usage.calls" ] && echo yes || echo no)"
+expect "the default account is asked without CLAUDE_CONFIG_DIR" "1" "$(grep -c '^dir=unset .*"subtype":"get_usage"' "$HOME/.claude/fake-usage.calls")"
+expect "...and a named one with its folder" "1" "$(grep -c "^dir=$HOME/.claude-gamma .*get_usage" "$HOME/.claude-gamma/fake-usage.calls")"
+expect "piped output has no colors" "0" "$(printf '%s' "$u" | grep -c "$(printf '\033')")"
+expect "ca usage NAME shows just that account" "2 1" "$(CLAUDE_ACCOUNTS_NOW=$NOW "$CA" usage gamma 2>/dev/null | wc -l | tr -d ' ') $(CLAUDE_ACCOUNTS_NOW=$NOW "$CA" usage gamma gamma 2>/dev/null | grep -c ' gamma ')"
+refuses "ca usage with a missing account" "$CA" usage ghost
+refuses "ca usage with an unknown option" "$CA" usage --nope
+echo '{"oauthAccount":{"emailAddress":"b@example.com"}}' > "$HOME/.claude-beta/.claude.json"
+printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request_id":"ca-usage","error":"Unsupported control request"}}' > "$HOME/.claude-beta/fake-usage.json"
+expect "an error from Claude Code is shown in the row" "  beta                 (error: Unsupported control request)" "$("$CA" usage beta 2>/dev/null | grep ' beta ')"
+usage_reply "$HOME/.claude-beta" '{"subscription_type":null,"rate_limits_available":false,"rate_limits":null}'
+expect "an account without plan limits says so" "  beta                 -      (no plan limits reported)" "$("$CA" usage beta 2>/dev/null | grep ' beta ')"
+usage_reply "$HOME/.claude-beta" '{"subscription_type":"team","rate_limits_available":true,"rate_limits":{"five_hour":{"utilization":100,"resets_at":"2026-10-26T19:00:00Z"},"seven_day":null}}'
+expect "a reset already past shows as now, a missing window as -" "  beta                 team   100%  now          -  -" "$(CLAUDE_ACCOUNTS_NOW=$NOW "$CA" usage beta 2>/dev/null | grep ' beta ')"
+usage_reply "$HOME/.claude-beta" '{"subscription_type":"max","rate_limits_available":true,"rate_limits":{"five_hour":null,"seven_day":null,"model_scoped":null,"limits":null}}'
+expect "a logged-in account with no usage data says so" "  beta                 max    (no usage data returned)" "$("$CA" usage beta 2>/dev/null | grep ' beta ')"
+usage_reply "$HOME/.claude-beta" '{"subscription_type":null,"rate_limits_available":false,"rate_limits":null}'
+printf '{\n  "loggedIn": false,\n  "authMethod": "none"\n}\n' > "$HOME/.claude-beta/fake-auth.json"
+expect "a lost login (email still in .claude.json) is told apart" "  beta                 (logged out: open claude on it and run /login)" "$("$CA" usage beta 2>/dev/null | grep ' beta ')"
+printf '{\n  "loggedIn": true,\n  "authMethod": "api_key"\n}\n' > "$HOME/.claude-beta/fake-auth.json"
+expect "...and so is an API key account" "  beta                 (API key: billed per use, no plan limits)" "$("$CA" usage beta 2>/dev/null | grep ' beta ')"
+printf 'error: unknown option --json\n' > "$HOME/.claude-beta/fake-auth.json"
+expect "an older Claude Code without auth status still gets its usage row" "  beta                 -      (no plan limits reported)" "$("$CA" usage beta 2>/dev/null | grep ' beta ')"
+rm -f -- "$HOME/.claude-beta/fake-auth.json"
+touch "$HOME/.claude-beta/fake-usage.hang"; s=$SECONDS
+expect "an account that does not answer is cut off after the timeout" "  beta                 (no answer from Claude Code in 1s)" "$(CLAUDE_ACCOUNTS_USAGE_TIMEOUT=1 "$CA" usage beta 2>/dev/null | grep ' beta ')"
+expect "...quickly" "yes" "$(yes_if [ $((SECONDS - s)) -le 5 ])"
+rm -f -- "$HOME/.claude-beta/fake-usage.hang" "$HOME/.claude-beta/.claude.json"
+expect "ca usage leaves no temporary folder behind" "0" "$(for d in "$TMPDIR"/ca-usage.*; do [ -e "$d" ] && echo x; done | grep -c x)"
+expect "pt-BR header and words" "  CONTA                PLANO    5H  RENOVA EM   7D  RENOVA EM  MODELOS|  alpha                (sem login)" \
+  "$(CLAUDE_ACCOUNTS_LANG=pt-BR "$CA" usage 2>/dev/null | sed -n '1p;/ alpha /p' | paste -sd'|' -)"
+refuses "usage is a reserved name" "$CA" new usage
+(cd "$P" && "$CA" here gamma >/dev/null)
+expect "ca usage marks the account in effect here" "1" "$(cd "$P" && "$CA" usage 2>/dev/null | grep -c '^> gamma')"
+rm -f -- "$P/.claude-account"
+CLAUDE_REAL_SAVED="$(cat "$CLAUDE_ACCOUNTS_DIR/config")"; echo "CLAUDE_REAL=/nowhere" > "$CLAUDE_ACCOUNTS_DIR/config"
+refuses "ca usage without the real claude fails clearly" "$CA" usage
+echo "$CLAUDE_REAL_SAVED" > "$CLAUDE_ACCOUNTS_DIR/config"
+
 echo "shell completion"
 if bash -c ". '$ROOT/completions/claude-accounts.bash'"; then ok "bash completion loads"; else bad "bash completion loads"; fi
 comp() { # words... → completions for the last word
@@ -316,6 +384,8 @@ expect "completes commands and accounts" "gamma" "$(comp ca ga)"
 expect "completes subcommands" "statusline stop" "$(comp ca st | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//')"
 expect "completes account names after use" "alpha" "$(comp ca use al)"
 expect "completes flags of new" "--clean" "$(comp ca new x --c)"
+expect "completes usage" "usage" "$(comp ca usa)"
+expect "...and any number of account names after it" "gamma gamma" "$(comp ca usage ga) $(comp ca usage alpha ga)"
 if command -v zsh >/dev/null 2>&1; then
   if zsh -n "$ROOT/completions/claude-accounts.zsh"; then ok "zsh completion parses"; else bad "zsh completion parses"; fi
 fi
