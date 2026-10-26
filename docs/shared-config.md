@@ -28,7 +28,7 @@ In practice:
 - resume a conversation in any account → all of them see it (`/resume`);
 - change the theme, model or permissions → applies to all of them.
 
-When an existing account is shared, what it already had is merged into the base (folders) or kept as `<item>.before-share` (files). Nothing is deleted.
+When an existing account is shared, what it already had is merged into the base (folders) or kept as `<item>.before-share` (files). Items the base does not have yet are created there first (empty, or from the account's own copy), so the link exists from day one. Nothing is deleted.
 
 ## Which account should be the base?
 

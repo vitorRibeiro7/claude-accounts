@@ -192,11 +192,24 @@ list_sessions() { # prints the sessions; returns how many there are
 #  - folder (e.g. projects/): what the account already had is MERGED into the source (no overwrite);
 #  - file (e.g. settings.json): the account's own copy is kept as <item>.before-share;
 #  - the original is always kept as <item>.before-share, never deleted.
+# A fresh source may lack an item (no skills/ yet, no history.jsonl…). It is created there before
+# linking, from the account's own copy when it has one, so the link exists from day one and whatever
+# Claude writes later is shared too. Without this the link was skipped and the accounts drifted apart.
+seed_item() { # SRC ITEM FROM — make sure SRC/ITEM exists
+  { [ -e "$1/$2" ] || [ -L "$1/$2" ]; } && return 0
+  case "$2" in
+    *.json|*.jsonl)
+      if [ -f "$3/$2" ] && [ ! -L "$3/$2" ]; then cp -p "$3/$2" "$1/$2"
+      elif [ "$2" = "${2%.jsonl}" ]; then printf '{}\n' > "$1/$2"    # .json: an empty object
+      else : > "$1/$2"; fi ;;                                          # .jsonl: an empty file
+    *) mkdir -p "$1/$2" ;;                                             # folders: merged below
+  esac
+}
 share_items() {
   local dir="$1" src="$2" item
   for item in $SHAREABLE; do
-    [ -e "$src/$item" ] || continue
     [ -L "$dir/$item" ] && [ "$(readlink "$dir/$item")" = "$src/$item" ] && continue
+    seed_item "$src" "$item" "$dir" || return 1
     if [ -e "$dir/$item" ] && [ ! -L "$dir/$item" ]; then
       [ -d "$dir/$item" ] && cp -an "$dir/$item/." "$src/$item/"
       mv "$dir/$item" "$dir/$item$BACKUP_SUFFIX" || return 1
