@@ -268,7 +268,11 @@ rm -f -- "$SG"; ln -s "$HOME/.claude-alpha/settings.json" "$SG"
 (cd "$P" && "$CA" statusline --install >/dev/null)
 expect "--install keeps a shared settings.json a link" "yes" "$(yes_if [ -L "$SG" ])"
 expect "...and writes through it" "1" "$(grep -c statusLine "$HOME/.claude-alpha/settings.json")"
-rm -f -- "$P/.claude-account"
+echo ghost > "$P/src/.claude-account"
+refuses "--install under a pin to a missing account fails before touching anything" bash -c "cd '$P/src' && '$CA' statusline --install"
+expect "...with the pin error, and no settings.json path" "1 0" \
+  "$(cd "$P/src" && "$CA" statusline --install 2>&1 | grep -c "names 'ghost'") $(cd "$P/src" && "$CA" statusline --install 2>&1 | grep -c 'settings.json')"
+rm -f -- "$P/src/.claude-account" "$P/.claude-account"
 
 echo "shell completion"
 if bash -c ". '$ROOT/completions/claude-accounts.bash'"; then ok "bash completion loads"; else bad "bash completion loads"; fi

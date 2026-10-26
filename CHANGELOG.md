@@ -10,6 +10,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
   account names; an account called `rm` could be created but never switched to.
 - An `active` file naming an account that is no longer in the list (hand edit, restored backup) is
   an error like a broken pin, instead of a silent fallback to the first account; `ca list` says so.
+- `ca statusline --install` in a folder pinned to a missing account stops with the pin error instead
+  of trying to write `/settings.json`.
 - `ca statusline --install` no longer needs `jq` when `settings.json` already has settings: it
   inserts the `statusLine` member itself and keeps a backup (`settings.json.before-statusline`).
 - `ca statusline` run in a plain terminal shows the account in effect for that folder instead of
