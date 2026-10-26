@@ -83,6 +83,13 @@ refuses "switch to a missing account" "$CA" ghost
 refuses "names are literal, not regex" "$CA" 'w.*'
 "$CA" work >/dev/null
 
+echo "stale active account (hand-edited state)"
+echo fantasma > "$CLAUDE_ACCOUNTS_DIR/active"
+refuses "an active account missing from the list is an error, not a silent fallback" "$CA" _dir
+expect "...the error names it" "1" "$("$CA" 2>&1 | grep -c "'fantasma' is not in the list")"
+expect "...ca list points it out and marks no account as active" "1 0" "$("$CA" list | grep -c fantasma) $("$CA" list | grep -c '^\*')"
+expect "...and ca NAME fixes it" "work" "$("$CA" work >/dev/null && cat "$CLAUDE_ACCOUNTS_DIR/active")"
+
 echo "remove"
 refuses "won't remove the active account" "$CA" remove work
 "$CA" personal >/dev/null

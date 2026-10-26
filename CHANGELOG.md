@@ -8,6 +8,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - `ca new` and `install.sh --name` refuse `ls` and `rm`, the aliases of `list` and `remove`, as
   account names; an account called `rm` could be created but never switched to.
+- An `active` file naming an account that is no longer in the list (hand edit, restored backup) is
+  an error like a broken pin, instead of a silent fallback to the first account; `ca list` says so.
 - `ca statusline --install` no longer needs `jq` when `settings.json` already has settings: it
   inserts the `statusLine` member itself and keeps a backup (`settings.json.before-statusline`).
 - `ca statusline` run in a plain terminal shows the account in effect for that folder instead of

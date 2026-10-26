@@ -33,7 +33,7 @@ If `CLAUDE_CONFIG_DIR` is already set (for example by an alias that pins one acc
 3. a `.claude-account` file in the current folder or any parent (`ca here NAME`) → that account;
 4. otherwise the global account in `~/.config/claude-accounts/active` (`ca NAME`).
 
-A pin or `CLAUDE_ACCOUNT` naming a missing account is an error, so `claude` never silently starts on the wrong one. Details: [per-project-accounts.md](per-project-accounts.md).
+A pin or `CLAUDE_ACCOUNT` naming a missing account is an error, and so is an `active` file naming one (after a hand edit or a restored backup), so `claude` never silently starts on the wrong account. Details: [per-project-accounts.md](per-project-accounts.md).
 
 ## The default account is a special case
 
