@@ -10,7 +10,7 @@ Scenario: `claude-accounts` is already installed and you want to start using **o
 
 Lowercase letters, digits, `-` or `_`. This is what you will type after `ca`: `work`, `client-x`, `freelance`.
 
-Command names (`list`, `use`, `new`, `base`, `share`, `remove`, `sessions`, `stop`, `lang`, `doctor`, `help`, `version`) are reserved.
+Command names (`list`, `ls`, `use`, `new`, `base`, `share`, `remove`, `rm`, `here`, `sessions`, `stop`, `lang`, `statusline`, `prompt`, `doctor`, `help`, `version`) are reserved.
 
 ### 2. Create the account
 

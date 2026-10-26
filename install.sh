@@ -19,7 +19,6 @@ START="# >>> claude-accounts >>>"
 END="# <<< claude-accounts <<<"
 LEGACY_START="# >>> claude-contas >>>"
 LEGACY_END="# <<< claude-contas <<<"
-NAME_RE='^[a-z0-9][a-z0-9_-]*$'
 
 name="" lang="" mode="install"
 while [ $# -gt 0 ]; do
@@ -110,7 +109,7 @@ if ! grep -q '^[^#=][^=]*=' "$CFG/accounts"; then
     echo "What do you want to call the account you ALREADY use in Claude Code? (e.g. personal, work)"
     name="$(ask "Name [main]: " main)"
   fi
-  [[ "$name" =~ $NAME_RE ]] || { echo "Invalid name: use lowercase letters, digits, - or _." >&2; exit 1; }
+  "$DEST/claude-accounts" _valid "$name" || { echo "Invalid name '$name': use lowercase letters, digits, - or _, and not a command name (see: ca help)." >&2; exit 1; }
   echo "$name=~/.claude" >> "$CFG/accounts"
   echo "$name" > "$CFG/active"
 fi

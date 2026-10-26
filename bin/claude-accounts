@@ -23,7 +23,7 @@ PROC_NAME="${CLAUDE_ACCOUNTS_PROC_NAME:-claude}"   # only the tests change this
 # Items a new account can share with another one (conversations, settings, plugins…).
 SHAREABLE="projects settings.json plugins skills file-history history.jsonl"
 BACKUP_SUFFIX=".before-share"
-RESERVED="list use new base share remove here sessions stop lang doctor statusline prompt help version"
+RESERVED="list ls use new base share remove rm here sessions stop lang doctor statusline prompt help version"
 PIN_FILE=".claude-account"
 
 mkdir -p "$CFG"; touch "$ACCOUNTS"
@@ -614,6 +614,7 @@ case "${1:-}" in
     resolve; [ -n "$RES_NAME" ] && ! is_default "$RES_NAME" && dir_of "$RES_NAME"
     exit 0 ;;
   _names)             names ;;   # (internal) for shell completion
+  _valid)             valid_name "${2:-}" ;;   # (internal) 0 if NAME can be an account name; install.sh uses it
   _dirs)              for n in $(names); do dir_of "$n"; done ;;   # (internal) for claude-auto
   -*)                 die "unknown option: $1 (see: ca help)" "opção desconhecida: $1 (veja: ca help)" ;;
   *)                  cmd_use "$1" ;;
