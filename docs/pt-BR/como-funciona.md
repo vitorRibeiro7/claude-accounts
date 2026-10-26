@@ -34,7 +34,7 @@ Se `CLAUDE_CONFIG_DIR` já estiver definida (por exemplo, um alias que fixa uma 
 3. um arquivo `.claude-account` na pasta atual ou em alguma acima (`ca here NOME`) → essa conta;
 4. senão, a conta global em `~/.config/claude-accounts/active` (`ca NOME`).
 
-Fixação ou `CLAUDE_ACCOUNT` apontando para conta que não existe é erro, então o `claude` nunca abre na conta errada em silêncio. Detalhes: [contas-por-projeto.md](contas-por-projeto.md).
+Fixação, `CLAUDE_ACCOUNT` ou o arquivo `active` apontando para conta que não existe (edição à mão, backup restaurado) é erro, então o `claude` nunca abre na conta errada em silêncio. Detalhes: [contas-por-projeto.md](contas-por-projeto.md).
 
 Tudo é bash puro e arquivos de texto: funciona em Linux, WSL e macOS (inclusive o bash 3.2 de fábrica do macOS). Não precisa de python; o e-mail de cada conta é lido com `jq` se ele existir, senão com `sed`.
 

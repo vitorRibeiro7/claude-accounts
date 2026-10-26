@@ -79,15 +79,18 @@ email_of() {
 
 names() { sed -n 's/^\([^#=][^=]*\)=.*/\1/p' "$ACCOUNTS"; }
 
+active_setting() { tr -d '[:space:]' 2>/dev/null < "$ACTIVE"; }   # the raw content of the active file
 active() {
-  local a; a="$(tr -d '[:space:]' 2>/dev/null < "$ACTIVE")"
+  local a; a="$(active_setting)"
   [ -n "$a" ] && [ -n "$(dir_of "$a")" ] && { echo "$a"; return; }
   names | head -1
 }
+# The active file names an account that is no longer in the list (hand edit, restored backup).
+stale_active() { local a; a="$(active_setting)"; [ -n "$a" ] && [ -z "$(dir_of "$a")" ]; }
 
 # Which account applies HERE, and why. Sets RES_NAME and RES_SRC ("env", "global" or the
-# path of the .claude-account file). Fails if a pin names an account that doesn't exist:
-# opening Claude on the wrong account is worse than not opening it.
+# path of the .claude-account file). Fails if a pin, CLAUDE_ACCOUNT or the active file names an
+# account that doesn't exist: opening Claude on the wrong account is worse than not opening it.
 resolve() {
   local d
   RES_NAME=""; RES_SRC=""
@@ -101,7 +104,12 @@ resolve() {
       d="${d%/*}"
     done
   fi
-  if [ -z "$RES_SRC" ]; then RES_NAME="$(active)"; RES_SRC="global"; return 0; fi
+  if [ -z "$RES_SRC" ]; then
+    RES_NAME="$(active)"; RES_SRC="global"
+    stale_active && die "the active account '$(active_setting)' is not in the list; pick one with: ca NAME (see: ca list)" \
+                        "a conta ativa '$(active_setting)' não está na lista; escolha uma com: ca NOME (veja: ca list)"
+    return 0
+  fi
   [ -n "$(dir_of "$RES_NAME")" ] && return 0
   if [ "$RES_SRC" = env ]; then
     die "CLAUDE_ACCOUNT='$RES_NAME' is not an account (see: ca list)" "CLAUDE_ACCOUNT='$RES_NAME' não é uma conta (veja: ca list)"
@@ -242,8 +250,9 @@ show() {
 }
 
 cmd_list() {
-  local c n m r b here=""; c="$(active)"; b="$(base)"
+  local c n m r b here="" stale=""; c="$(active)"; b="$(base)"
   [ -n "$(names)" ] || die "no accounts yet. Run: ca new NAME" "nenhuma conta cadastrada. Rode: ca new NOME"
+  stale_active && { stale="$(active_setting)"; c=""; }        # then no account gets the * mark
   ( resolve ) >/dev/null 2>&1 && resolve && [ "$RES_SRC" != global ] && here="$RES_NAME"
   for n in $(names); do
     m=" "; [ "$n" = "$c" ] && m="*"; [ "$n" = "$here" ] && m=">"
@@ -254,6 +263,8 @@ cmd_list() {
     if [ "$RES_SRC" = env ]; then r="\$CLAUDE_ACCOUNT"; else r="$(tildify "$RES_SRC")"; fi
     say "> = used here (from $r) · * = global" "> = usada aqui (via $r) · * = global"
   fi
+  [ -z "$stale" ] || say "Warning: the active account '$stale' is not in the list; pick one with: ca NAME" \
+                         "Atenção: a conta ativa '$stale' não está na lista; escolha uma com: ca NOME"
 }
 
 cmd_use() {
