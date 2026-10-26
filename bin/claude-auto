@@ -59,15 +59,20 @@ code=$?
 
 # --continue refused at startup. Conversations are shared across accounts, so the background
 # session may belong to another account: reattach to it there, with the account that owns it.
-for dir in $("$HERE/claude-accounts" _dirs); do
-  [ "$dir" = "$here_dir" ] && continue
+# One folder per line, read on fd 3 so stdin (the terminal) stays with `attach`; folders may have
+# spaces, so no word splitting.
+while IFS= read -r dir <&3; do
+  [ -n "$dir" ] || continue
+  [ "$dir" != "$here_dir" ] || continue
   id="$(agents_json "$dir" | background_id "$sid")"
   [ -n "$id" ] || continue
   echo "claude-auto: the last conversation here is a background session of $dir ($id); attaching to it with that account." >&2
   if [ "$dir" = "$HOME/.claude" ]; then exec env -u CLAUDE_CONFIG_DIR "$REAL" attach "$id"; fi
   # shellcheck disable=SC2093  # exec on purpose: the loop ends at the first match
   exec env CLAUDE_CONFIG_DIR="$dir" "$REAL" attach "$id"
-done
+done 3<<EOF
+$("$HERE/claude-accounts" _dirs)
+EOF
 
 echo "claude-auto: couldn't continue the last conversation here ($sid). Nothing new was started." >&2
 echo "  pick it with:  claude --resume $sid      ·  background sessions:  claude agents" >&2
