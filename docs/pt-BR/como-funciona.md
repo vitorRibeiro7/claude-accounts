@@ -68,7 +68,7 @@ Quando a última conversa virou **sessão em segundo plano**, o `--continue` se 
 
 A **base** (`~/.config/claude-accounts/base`) é só o nome da conta que guarda a configuração de verdade. `ca new` liga a conta nova a ela por padrão; `--clean` desliga isso e `--share OUTRA` liga a outra conta. `ca base OUTRA` troca a base de verdade: move os itens compartilhados para a nova e religa as demais.
 
-Ligar (`ca new`, `ca share`) cria links simbólicos de uma conta para estes itens da conta de origem: `projects`, `settings.json`, `plugins`, `skills`, `file-history`, `history.jsonl`. Assim as duas contas veem as mesmas conversas, plugins e configurações, e só o login difere. O que a conta já tinha é mesclado na origem e o original fica como `<item>.before-share`. Edite a variável `SHAREABLE` em `bin/claude-accounts` para mudar a lista.
+Ligar (`ca new`, `ca share`) cria links simbólicos de uma conta para estes itens da conta de origem: `projects`, `settings.json`, `plugins`, `skills`, `file-history`, `history.jsonl`. Assim as duas contas veem as mesmas conversas, plugins e configurações, e só o login difere. Itens que a origem ainda não tem são criados nela antes (vazios, ou a partir da cópia da própria conta), para já nascerem ligados. O que a conta já tinha é mesclado na origem e o original fica como `<item>.before-share`. Edite a variável `SHAREABLE` em `bin/claude-accounts` para mudar a lista.
 
 ## Idioma
 

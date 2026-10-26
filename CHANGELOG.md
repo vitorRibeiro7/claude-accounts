@@ -12,6 +12,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   an error like a broken pin, instead of a silent fallback to the first account; `ca list` says so.
 - `ca statusline --install` in a folder pinned to a missing account stops with the pin error instead
   of trying to write `/settings.json`.
+- Sharing (`ca new`, `ca share`) creates the items the source does not have yet (empty `settings.json`,
+  `history.jsonl` and folders, or the account's own copy) so they are linked from day one; before, an
+  item the base gained later was never shared and the accounts drifted apart in silence.
 - `ca statusline --install` no longer needs `jq` when `settings.json` already has settings: it
   inserts the `statusLine` member itself and keeps a backup (`settings.json.before-statusline`).
 - `ca statusline` run in a plain terminal shows the account in effect for that folder instead of

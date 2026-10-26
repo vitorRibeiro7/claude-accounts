@@ -28,6 +28,8 @@ Resultado prático:
 - retomou uma conversa em qualquer conta → todas enxergam (`/resume`);
 - mudou o tema, o modelo, as permissões → vale para todas.
 
+Ao ligar uma conta que já existe, o que ela tinha é mesclado na base (pastas) ou guardado como `<item>.before-share` (arquivos). Itens que a base ainda não tem são criados nela antes (vazios, ou a partir da cópia da própria conta), para o link já existir desde o início. Nada é apagado.
+
 ## Qual conta deve ser a base?
 
 Qualquer uma. Depois de ligadas, as contas são equivalentes: o que muda é só **onde os arquivos de verdade moram**.

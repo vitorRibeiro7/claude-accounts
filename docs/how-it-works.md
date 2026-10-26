@@ -67,7 +67,7 @@ When the last conversation became a **background session**, `--continue` refuses
 
 The **base** (`~/.config/claude-accounts/base`) is just the name of the account that holds the real config. `ca new` links the new account to it by default; `--clean` turns that off; `--share OTHER` links to another account instead. `ca base OTHER` really moves the base: it moves the shared items to the new base and relinks everyone else.
 
-Sharing creates symlinks from the account to these items of the source account: `projects`, `settings.json`, `plugins`, `skills`, `file-history`, `history.jsonl`. Both accounts then see the same conversations, plugins and settings; only the login differs. Existing folders are merged into the source (no overwrite) and the original is kept as `<item>.before-share`. To change the list, edit the `SHAREABLE` variable in `bin/claude-accounts`.
+Sharing creates symlinks from the account to these items of the source account: `projects`, `settings.json`, `plugins`, `skills`, `file-history`, `history.jsonl`. Both accounts then see the same conversations, plugins and settings; only the login differs. Items the source does not have yet are created there first (empty, or from the account's own copy), so they are linked from day one. Existing folders are merged into the source (no overwrite) and the original is kept as `<item>.before-share`. To change the list, edit the `SHAREABLE` variable in `bin/claude-accounts`.
 
 ## Where this shows up in practice
 

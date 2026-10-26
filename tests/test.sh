@@ -58,6 +58,24 @@ refuses "share with itself" "$CA" share loose loose
 refuses "share a missing account" "$CA" share loose ghost
 "$CA" remove loose >/dev/null
 
+echo "share creates what the source lacks (so later items are shared too)"
+"$CA" new bare --clean >/dev/null
+"$CA" new kid --share bare >/dev/null
+expect "every item is linked although the source was empty" "6" \
+  "$(for i in projects settings.json plugins skills file-history history.jsonl; do [ -L "$HOME/.claude-kid/$i" ] && echo y; done | grep -c y)"
+expect "the source got a valid empty settings.json" "{}" "$(cat "$HOME/.claude-bare/settings.json")"
+expect "...and an empty history.jsonl" "yes" "$(yes_if [ -f "$HOME/.claude-bare/history.jsonl" ] && [ ! -s "$HOME/.claude-bare/history.jsonl" ])"
+touch "$HOME/.claude-bare/skills/later.md"
+expect "something the source gains later shows up in the linked account" "yes" "$(yes_if [ -e "$HOME/.claude-kid/skills/later.md" ])"
+"$CA" new owner --clean >/dev/null; echo mine > "$HOME/.claude-owner/settings.json"
+mkdir -p "$HOME/.claude-owner/skills"; echo s > "$HOME/.claude-owner/skills/x.md"
+"$CA" new blank --clean >/dev/null
+"$CA" share owner blank >/dev/null
+expect "an account's own file seeds a source that lacks it" "mine" "$(cat "$HOME/.claude-blank/settings.json")"
+expect "...and so do its folders" "s" "$(cat "$HOME/.claude-blank/skills/x.md")"
+expect "the original is still kept as a backup" "mine" "$(cat "$HOME/.claude-owner/settings.json.before-share")"
+for a in kid bare owner blank; do "$CA" remove "$a" >/dev/null; done
+
 echo "base"
 expect "no base set" "0" "$("$CA" base | grep -c '^base:')"
 echo y | "$CA" base work >/dev/null
